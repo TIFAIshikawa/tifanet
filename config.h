@@ -42,7 +42,8 @@
  * 0.4: Thin client mode: run thin tifanetd with only caches
  * 0.5: Robustify network: fault tolerance, e.g. fix possible infinite loops
  * 0.6: Denounce notar upon block timeout
- * 0.7: Go live
+ * 0.7: Nicify code
+ *      Go live
  * 0.8: Pact type II (masked pacts)
  * 0.9: Pact type III (Solidity & ERC20) ?
  */
