@@ -79,7 +79,7 @@ static char *__network = "dev1";
 static const char *__bootstrap_server = "bootstrap.%s.tifa.network";
 static struct ifaddrs *__ifaddrs = NULL;
 
-static void peerlist_lookup(void);
+static void peerlist_bootstrap(void);
 
 static void peerlist_add(struct sockaddr_storage *addr);
 static void peerlist_add_ipv4(struct in_addr addr);
@@ -168,7 +168,7 @@ peerlist_load()
 			lprintf("peerlist6: %s: %s", file, strerror(errno));
 	}
 
-	peerlist_lookup();
+	peerlist_bootstrap();
 }
 
 void peerlist_save()
@@ -216,12 +216,10 @@ return;
 }
 
 static void
-peerlist_lookup(void)
+peerlist_bootstrap(void)
 {
 	struct addrinfo hints, *info, *addr;
 	char hostname[64];
-	struct in_addr a4;
-	struct in6_addr a6;
 
 	bzero(&hints, sizeof(hints));
 	hints.ai_family = PF_UNSPEC;
@@ -231,21 +229,12 @@ peerlist_lookup(void)
 	snprintf(hostname, 63, __bootstrap_server, __network);
 	hostname[63] = '\0';
 	if (getaddrinfo(hostname, NULL, &hints, &info) == 0) {
-		for (addr = info; addr; addr = addr->ai_next) {
-			switch(addr->ai_family) {
-			case AF_INET:
-				a4 = ((struct sockaddr_in *)addr->ai_addr)->sin_addr;
-				peerlist_add_ipv4(a4);
-				break;
-			case AF_INET6:
-				a6 = ((struct sockaddr_in6 *)addr->ai_addr)->sin6_addr;
-				peerlist_add_ipv6(a6);
-				break;
-			}
-		}
+		for (addr = info; addr; addr = addr->ai_next)
+			peerlist_add((struct sockaddr_storage *)&addr->ai_addr);
 		freeaddrinfo(info);
 	} else {
-		lprintf("peerlist_lookup: %s: %s", hostname, strerror(errno));
+		lprintf("peerlist_bootstrap: %s: %s", hostname,
+			strerror(errno));
 	}
 }
 
@@ -335,40 +324,67 @@ peername(struct sockaddr_storage *addr, char *dst)
 	return (dst);
 }
 
-void
-listen_socket_open()
+static int
+__listen_socket_open(struct sockaddr_storage *addr)
 {
-	struct sockaddr_in addr;
+	socklen_t len;
 	int opt = 1;
 	int fd;
 
-	bzero(&addr, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = INADDR_ANY;
-	addr.sin_port = htons(TIFA_NETWORK_PORT);
+	switch (addr->ss_family) {
+	case AF_INET: len = sizeof(struct sockaddr_in); break;
+	case AF_INET6: len = sizeof(struct sockaddr_in6); break;
+	default: return (FALSE);
+	}
 
-	if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
-		FAIL(EX_TEMPFAIL, "listen_socket_open: socket: %s",
-				  strerror(errno));
+	if ((fd = socket(addr->ss_family, SOCK_STREAM, 0)) == -1)
+		FAILBOOL("listen_socket_open: socket: %s", strerror(errno));
 
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1)
-		FAIL(EX_TEMPFAIL, "listen_socket_open: setsockopt: %s",
-				  strerror(errno));
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+		close(fd);
+		FAILBOOL("listen_socket_open: setsockopt: %s", strerror(errno));
+	}
 
 	socket_set_async(fd);
 
-	if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
-		FAIL(EX_TEMPFAIL, "listen_socket_open: bind: %s",
-				  strerror(errno));
+	if (bind(fd, (struct sockaddr *)addr, len) == -1) {
+		close(fd);
+		FAILBOOL("listen_socket_open: bind: %s", strerror(errno));
+	}
 
-	if (listen(fd, SOMAXCONN) == -1)
-		FAIL(EX_TEMPFAIL, "listen_socket_open: listen: %s",
-				  strerror(errno));
+	if (listen(fd, SOMAXCONN) == -1) {
+		close(fd);
+		FAILBOOL("listen_socket_open: listen: %s", strerror(errno));
+	}
 
 	__listen_info = event_add(fd, EVENT_READ, accept_notar_connection,
 				NULL);
 
 	lprintf("listening for connections...");
+
+	return (TRUE);
+}
+
+void
+listen_socket_open()
+{
+	struct sockaddr_in a4;
+	struct sockaddr_in6 a6;
+
+	bzero(&a6, sizeof(struct sockaddr_in6));
+	a6.sin6_family = AF_INET6;
+	a6.sin6_addr = in6addr_any;
+	a6.sin6_port = htons(TIFA_NETWORK_PORT);
+	if (__listen_socket_open((struct sockaddr_storage *)&a6))
+		return;
+
+	bzero(&a4, sizeof(struct sockaddr_in));
+	a4.sin_family = AF_INET;
+	a4.sin_addr.s_addr = INADDR_ANY;
+	a4.sin_port = htons(TIFA_NETWORK_PORT);
+	if (!__listen_socket_open((struct sockaddr_storage *)&a4))
+		FAILTEMP("could open neither IPv6 nor IPv4 listen sockets, "
+			"exiting");
 }
 
 void
