@@ -42,6 +42,9 @@
 #define FAIL(reason, fmt, ...) { lprintf(fmt, __VA_ARGS__); exit(reason); }
 #define FAILTEMP(...) { lprintf(__VA_ARGS__); exit(EX_TEMPFAIL); }
 
+#define FAILRET(reason, fmt, ...) { lprintf(fmt, __VA_ARGS__); return (reason);}
+#define FAILBOOL(...) { lprintf(__VA_ARGS__); return (FALSE); }
+
 extern uint8_t loglevel;
 
 extern void openlog(void);

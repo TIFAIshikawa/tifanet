@@ -91,7 +91,7 @@ opcode_callback_t opcode_callbacks[OP_MAXOPCODE] = {
 	op_notar_announce,	// OP_NOTAR_ANNOUNCE
 	op_notar_denounce,	// OP_NOTAR_DENOUNCE
 	op_block_announce,	// OP_BLOCK_ANNOUNCE
-	op_pact,		// OP_TRANSACTION
+	op_pact,		// OP_PACT
 	op_gettxcache,		// OP_GETTXCACHE
 	op_getnotars,		// OP_GETNOTARS
 };
@@ -101,7 +101,7 @@ opcode_valid(message_t *msg)
 {
 	opcode_t opcode;
 
-	opcode = be32toh(msg->opcode);
+	opcode = be16toh(msg->opcode);
 
 	return (opcode > OP_NONE && opcode < OP_MAXOPCODE);
 }
@@ -111,7 +111,7 @@ opcode_payload_size_valid(message_t *msg, int direction)
 {
 	opcode_t opcode;
 
-	opcode = be32toh(msg->opcode);
+	opcode = be16toh(msg->opcode);
 
 	switch (opcode) {
 	case OP_PEERLIST:
@@ -130,7 +130,7 @@ opcode_payload_size_valid(message_t *msg, int direction)
 		return (be32toh(msg->payload_size) == sizeof(public_key_t));
 	case OP_BLOCK_ANNOUNCE:
 		return (be32toh(msg->payload_size) >= 256 && be32toh(msg->payload_size) < MAXPACKETSIZE);
-	case OP_TRANSACTION:
+	case OP_PACT:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (be32toh(msg->payload_size) >= sizeof(raw_pact_t) + sizeof(pact_rx_t) + sizeof(pact_tx_t) && be32toh(msg->payload_size) < MAXPACKETSIZE);
 		else
@@ -154,14 +154,14 @@ handle_network_call(event_info_t *info)
 	message_t *msg;
 
 	msg = network_message(info);
-	if (be32toh(msg->opcode) == OP_NONE || be32toh(msg->opcode) >= OP_MAXOPCODE) {
-		lprintf("msg->opcode invalid: %d", be32toh(msg->opcode));
+	if (be16toh(msg->opcode) == OP_NONE || be16toh(msg->opcode) >= OP_MAXOPCODE) {
+		lprintf("msg->opcode invalid: %d", be16toh(msg->opcode));
 		event_remove(info);
 
 		return;
 	}
 
-	opcode_callbacks[be32toh(msg->opcode)](info);
+	opcode_callbacks[be16toh(msg->opcode)](info);
 }
 
 void
@@ -272,20 +272,20 @@ void
 op_getblock_server(event_info_t *info, network_event_t *nev)
 {
 	raw_block_t *block;
-	big_idx_t index;
 	message_t *msg;
 	size_t size;
 
-	bcopy(nev->userdata, &index, sizeof(big_idx_t));
-	block = block_load(be64toh(index), &size);
-	free(nev->userdata);
+	msg = network_message(info);
+	if (!(block = block_load(be64toh(msg->userinfo), &size))) {
+		message_cancel(info);
+		return;
+	}
 
 	nev->state = NETWORK_EVENT_STATE_HEADER;
 	nev->read_idx = 0;
 	nev->write_idx = 0;
 	nev->userdata = block;
 	nev->userdata_size = sizeof(size);
-	msg = network_message(info);
 	msg->payload_size = htobe32(size);
 
 	event_update(info, EVENT_READ, EVENT_WRITE);

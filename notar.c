@@ -114,7 +114,8 @@ should_generate_block()
 static void
 notar_announce(void)
 {
-	message_broadcast(OP_NOTAR_ANNOUNCE, node_public_key(), sizeof(hash_t));
+	message_broadcast(OP_NOTAR_ANNOUNCE, node_public_key(), sizeof(hash_t),
+		0);
 }
 
 void
@@ -198,9 +199,9 @@ notar_elect_next(void)
 
 	__next_notar_idx = idx;
 
-	lprintf("next block=%ju notar=%s, notarcache idx=%d",
-		block_idx_last() + 1,
-		public_key_node_name(__notars[__next_notar_idx], name), idx);
+	lprintf("next notar(%ju)=%s for block %ju", idx,
+		public_key_node_name(__notars[__next_notar_idx], name),
+		block_idx_last() + 1);
 
 	if (should_generate_block() && !blockchain_is_updating()) {
 		if (!has_pending_pacts())

@@ -69,7 +69,7 @@ usage(char *cmd, int deliberate)
 
 	fprintf(f, "Usage: %s [-f] [-n] [-s] [-c] [-h]\n\n", cmd);
 	fprintf(f, "	-f	don't daemonize, run on foreground\n");
-	fprintf(f, "	-n	run in Notar mode\n");
+	fprintf(f, "	-n	run in notar mode\n");
 	fprintf(f, "	-s	synchronize the blockchain and quit when "
 		"done\n");
 	fprintf(f, "	-c	synchronize only caches\n");

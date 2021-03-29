@@ -40,7 +40,7 @@ static const char *__error_strs[__ERR_MAX] = {
 	"TX already spent",
 	"TX entries not compressed",
 	"Too many subsequent pacts",
-	"Transaction balance incorrect",
+	"Pact balance incorrect",
 	"Block too early",
 	"Block too late",
 };

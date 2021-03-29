@@ -522,8 +522,8 @@ opt_send(int argc, char *argv[])
 
 	event_handler_init();
 
-	send_count = message_broadcast_with_callback(OP_TRANSACTION,
-			raw_pact, tsize, send_callback);
+	send_count = message_broadcast_with_callback(OP_PACT,
+			raw_pact, tsize, 0, send_callback);
 
 	event_loop_start();
 

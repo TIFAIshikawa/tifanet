@@ -36,13 +36,15 @@
 
 /*
  * Roadmap:
- * 0.1: base functionality working, send & receive of pact type I
- * 0.3: peerlist & IP version agnostic code
- * 0.4: thin client mode: run thin tifanetd with only caches
- * 0.5: robustify network: fault tolerance and denouncement
- * 0.7: pact type I, go live
- * 0.8: pact type II (masked pacts)
- * 0.9: pact type III (Solidity & ERC20) ?
+ * 0.1: Base functionality working, send & receive of pact type I
+ * 0.2: Connect to both IPv4 & IPv6
+ * 0.3: Peerlist IPv4 & IPv6
+ * 0.4: Thin client mode: run thin tifanetd with only caches
+ * 0.5: Robustify network: fault tolerance, e.g. fix possible infinite loops
+ * 0.6: Denounce notar upon block timeout
+ * 0.7: Go live
+ * 0.8: Pact type II (masked pacts)
+ * 0.9: Pact type III (Solidity & ERC20) ?
  */
 #define TIFA_VERSION_STR	"0.2.0"
 #define TIFA_VERSION	100
@@ -51,7 +53,13 @@
 /* vv =============================================== vv */
 #define TIFA_IDENT		"TIFA"
 #define TIFA_NODE_IDENT		"N" TIFA_IDENT
+#if defined(ALPHA)
+#define TIFA_NETWORK_PORT	6172
+#elif defined(BETA)
+#define TIFA_NETWORK_PORT	6173
+#else
 #define TIFA_NETWORK_PORT	6174
+#endif
 /* ^^ =============================================== ^^ */
 
 #define TIFA_NOTAR_REWARD	50
@@ -73,8 +81,10 @@
 
 typedef uint32_t small_idx_t;
 typedef uint64_t big_idx_t;
+typedef uint16_t tiny_flags_t;
 typedef uint64_t flags_t;
 typedef uint64_t time64_t;
+typedef uint64_t userinfo_t;
 typedef uint64_t amount_t;
 
 extern void config_load(void);

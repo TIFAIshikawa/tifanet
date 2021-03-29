@@ -50,7 +50,7 @@ typedef struct {
 } peerlist_t;
 
 typedef char magic_t[4];
-typedef uint32_t opcode_t;
+typedef uint16_t opcode_t;
 
 enum opcodes {
 	OP_NONE = 0,
@@ -71,7 +71,7 @@ enum opcodes {
 	OP_BLOCK_ANNOUNCE,		// Announce the next block to
 					// the network.
 
-	OP_TRANSACTION,			// Publish pact
+	OP_PACT,			// Publish pact
 
 	OP_GETTXCACHE,			// Request current txcache from notar
 
@@ -80,12 +80,19 @@ enum opcodes {
 	OP_MAXOPCODE			// Number of opcodes.
 };
 
+enum message_flags {
+	MESSAGE_FLAG_PEER,		// ask to join the remote's peerlist
+
+	MESSAGE_FLAG_MAX
+};
+
 extern char *opcode_names[];
 
 typedef struct __attribute__((__packed__)) __message {
 	magic_t magic;
 	opcode_t opcode;
-	time64_t time;
+	tiny_flags_t flags;
+	userinfo_t userinfo;
 	small_idx_t payload_size;
 } message_t;
 
@@ -109,6 +116,8 @@ enum {
 typedef struct __network_event {
 	uint16_t state;
 	uint16_t type;
+	struct sockaddr_storage remote_addr;
+	socklen_t remote_addr_len;
 	message_t message_header;
 	size_t read_idx;
 	size_t write_idx;
@@ -121,22 +130,25 @@ extern peerlist_t peerlist;
 extern void peerlist_load(void);
 extern void peerlist_save(void);
 
-extern int is_local_address(struct in_addr addr, struct ifaddrs *ifaddrs);
+extern char *peername(struct sockaddr_storage *addr, char *dst);
 
-extern char *peername(struct in_addr addr);
+extern int is_local_address(struct sockaddr_storage *addr);
 
-extern struct in_addr peer_address_random(void);
+extern void peer_address_random(struct sockaddr_storage *addr);
 
 extern void listen_socket_open(void);
 
 extern network_event_t *network_event(event_info_t *info);
 extern message_t *network_message(event_info_t *info);
 
-extern event_info_t *message_send(struct in_addr to_addr, opcode_t opcode, void *payload, small_idx_t size);
+extern event_info_t *message_send(struct sockaddr_storage *addr,
+	opcode_t opcode, void *payload, small_idx_t size, userinfo_t info);
 extern void message_cancel(event_info_t *info);
 
-extern size_t message_broadcast(opcode_t opcode, void *payload, small_idx_t size);
-extern size_t message_broadcast_with_callback(opcode_t opcode, void *payload, small_idx_t size, event_callback_t callback);
+extern size_t message_broadcast(opcode_t opcode, void *payload,
+	small_idx_t size, userinfo_t info);
+extern size_t message_broadcast_with_callback(opcode_t opcode, void *payload,
+	small_idx_t size, userinfo_t info, event_callback_t callback);
 
 extern void message_read(event_info_t *, event_flags_t);
 extern void message_write(event_info_t *, event_flags_t);

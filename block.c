@@ -797,7 +797,7 @@ raw_block_broadcast(big_idx_t index)
 	size_t size;
 
 	block = block_load(index, &size);
-	message_broadcast(OP_BLOCK_ANNOUNCE, block, size);
+	message_broadcast(OP_BLOCK_ANNOUNCE, block, size, htobe64(index));
 }
 
 static void
@@ -810,11 +810,12 @@ void
 blockchain_update()
 {
 	event_info_t *info;
-	struct in_addr addr;
+	char tmp[INET6_ADDRSTRLEN];
+	struct sockaddr_storage addr;
 
-	addr = peer_address_random();
-	lprintf("asking peer %s for last block...", peername(addr));
-	info = message_send(addr, OP_LASTBLOCKINFO, NULL, 0);
+	peer_address_random(&addr);
+	lprintf("asking peer %s for last block...", peername(&addr, tmp));
+	info = message_send(&addr, OP_LASTBLOCKINFO, NULL, 0, 0);
 
 	if (info)
 		info->on_close = __blockchain_update;

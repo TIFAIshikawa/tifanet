@@ -22,6 +22,13 @@ CLI	=$(BASENAME)
 
 all:	$(DAEMON) $(CLI)
 
+alpha:
+	CFLAGS="$(CFLAGS) -DALPHA" $(MAKE)
+
+beta:
+	CFLAGS="$(CFLAGS) -DBETA" $(MAKE)
+
+
 $(DAEMON): config.h $(DOBJS)
 	$(CC) -o $(DAEMON) $(DOBJS) $(LDFLAGS)
 

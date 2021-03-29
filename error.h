@@ -50,7 +50,7 @@ enum {
 	ERR_TX_SPENT		= 6,	/* TX already spent */
 	ERR_TX_UNCOMPRESSED	= 7,	/* TX entries not compressed */
 	ERR_TX_FLOOD		= 8,	/* Too many subsequent pacts */
-	ERR_BADBALANCE		= 9,	/* Transaction balance incorrect */
+	ERR_BADBALANCE		= 9,	/* Pact balance incorrect */
 
 	ERR_BLK_EARLY		= 10,	/* Block too early */
 	ERR_BLK_LATE		= 11,	/* Block too late */
