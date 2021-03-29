@@ -46,7 +46,7 @@
  * 0.8: Pact type II (masked pacts)
  * 0.9: Pact type III (Solidity & ERC20) ?
  */
-#define TIFA_VERSION_STR	"0.2.0"
+#define TIFA_VERSION_STR	"0.3.0"
 #define TIFA_VERSION	100
 
 /*     If you fork TIFAnet, change these defines!!!!     */
