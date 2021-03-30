@@ -168,6 +168,8 @@ notar_add(public_key_t new_notar)
 static void
 notar_tick(event_info_t *info, event_flags_t eventtype)
 {
+peerlist_request_broadcast();
+return;
 	block_generate_next();
 }
 

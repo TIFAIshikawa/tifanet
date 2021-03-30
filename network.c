@@ -169,7 +169,6 @@ peerlist_load()
 
 void peerlist_save()
 {
-return;
 	FILE *f;
 	int w, len;
 	char tmp[INET6_ADDRSTRLEN + 2];
@@ -211,6 +210,12 @@ return;
 	}
 }
 
+void
+peerlist_request_broadcast(void)
+{
+	message_broadcast(OP_PEERLIST, NULL, 0, 0);
+}
+
 static void
 peerlist_bootstrap(void)
 {
@@ -226,7 +231,7 @@ peerlist_bootstrap(void)
 	hostname[63] = '\0';
 	if (getaddrinfo(hostname, NULL, &hints, &info) == 0) {
 		for (addr = info; addr; addr = addr->ai_next)
-			peerlist_add((struct sockaddr_storage *)&addr->ai_addr);
+			peerlist_add((struct sockaddr_storage *)addr->ai_addr);
 		freeaddrinfo(info);
 	} else {
 		lprintf("peerlist_bootstrap: %s: %s", hostname,
@@ -462,14 +467,14 @@ message_read(event_info_t *info, event_flags_t eventtype)
 				}
 				if (!opcode_valid(msg)) {
 					printf("message_read: opcode invalid: "
-						"%u\n", be32toh(msg->opcode));
+						"%u\n", be16toh(msg->opcode));
 					message_cancel(info);
 					return;
 				}
 				if (!opcode_payload_size_valid(msg, nev->type)) {
 					printf("message_read: size %d not "
 						"valid for opcode %d\n", size,
-						be32toh(msg->opcode));
+						be16toh(msg->opcode));
 					message_cancel(info);
 					return;
 				}
@@ -658,7 +663,7 @@ message_create(opcode_t opcode, small_idx_t size, userinfo_t info)
 
 	res = message_alloc();
 	bcopy(TIFA_IDENT, res->magic, sizeof(magic_t));
-	res->opcode = htobe32(opcode);
+	res->opcode = htobe16(opcode);
 	if (is_notar_node())
 		res->flags |= MESSAGE_FLAG_PEER;
 	res->userinfo = info;
@@ -786,7 +791,7 @@ message_broadcast_with_callback(opcode_t opcode, void *payload,
 
 #ifdef NETWORK_DEBUG
 		lprintf("broadcasting message %s to %s",
-			opcode_names[opcode], peername(addr, tmp));
+			opcode_names[opcode], peername(&addr, tmp));
 #endif
 		if ((req = request_send(&addr, msg, payload))) {
 			req->on_close = callback;

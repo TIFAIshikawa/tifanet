@@ -134,6 +134,8 @@ extern void peerlist_add(struct sockaddr_storage *addr);
 extern void peerlist_add_ipv4(struct in_addr addr);
 extern void peerlist_add_ipv6(struct in6_addr addr);
 
+extern void peerlist_request_broadcast(void);
+
 extern char *peername(struct sockaddr_storage *addr, char *dst);
 
 extern int is_local_address(struct sockaddr_storage *addr);

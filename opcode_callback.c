@@ -203,14 +203,14 @@ op_peerlist_server(event_info_t *info, network_event_t *nev)
 	op_peerlist_response_t *response;
 
 	ipv4_size = peerlist.list4_size * sizeof(struct in_addr);
-	ipv6_size = peerlist.list6_size * sizeof(struct in_addr);
+	ipv6_size = peerlist.list6_size * sizeof(struct in6_addr);
 	size = sizeof(op_peerlist_response_t) + ipv4_size + ipv6_size;
 
 	buf = malloc(size);
 	response = (op_peerlist_response_t *)buf;
 
-	response->peers_ipv4_count = peerlist.list4_size;
-	response->peers_ipv6_count = peerlist.list6_size;
+	response->peers_ipv4_count = htobe32(peerlist.list4_size);
+	response->peers_ipv6_count = htobe32(peerlist.list6_size);
 
 	ptr = buf + sizeof(op_peerlist_response_t);
 	bcopy(peerlist.list4, ptr, ipv4_size);
@@ -244,16 +244,17 @@ op_peerlist_client(event_info_t *info, network_event_t *nev)
 
 	buf = nev->userdata;
 	response = (op_peerlist_response_t *)buf;
+	response->peers_ipv4_count = be32toh(response->peers_ipv4_count);
+	response->peers_ipv6_count = be32toh(response->peers_ipv6_count);
+
 	buf += sizeof(op_peerlist_response_t);
 	addr4_list = (struct in_addr *)buf;
 	buf += response->peers_ipv4_count * sizeof(struct in_addr);
 	addr6_list = (struct in6_addr *)buf;
 	buf += response->peers_ipv6_count * sizeof(struct in6_addr);
 
-	if (buf - (uint8_t *)nev->userdata != be32toh(msg->payload_size)) {
-printf("gotten %ld != payload_size %d\n", buf - (uint8_t *)nev->userdata, be32toh(msg->payload_size));
+	if (buf - (uint8_t *)nev->userdata != be32toh(msg->payload_size))
 		return (message_cancel(info));
-}
 
 	for (small_idx_t i = 0; i < response->peers_ipv4_count; i++)
 		peerlist_add_ipv4(addr4_list[i]);

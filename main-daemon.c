@@ -182,6 +182,8 @@ main(int argc, char *argv[])
 
 	event_handler_init();
 
+	peerlist_request_broadcast();
+
 	blockchain_set_updating(1);
 	if (skip_update)
 		daemon_start();
