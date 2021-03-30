@@ -455,6 +455,8 @@ message_read(event_info_t *info, event_flags_t eventtype)
 				message_cancel(info);
 				return;
 			}
+			if (msg->flags & MESSAGE_FLAG_PEER)
+				peerlist_add(&nev->remote_addr);
 			if ((size = be32toh(msg->payload_size))) {
 				if (size > MAXPACKETSIZE) {
 					printf("message_read: size too large: "
@@ -642,7 +644,7 @@ message_alloc(void)
 {
 	message_t *res;
 
-	res = malloc(sizeof(message_t));
+	res = calloc(1, sizeof(message_t));
 #ifdef DEBUG_ALLOC
 	printf("+MESSAGE %p\n", res);
 #endif
@@ -661,6 +663,8 @@ message_create(opcode_t opcode, small_idx_t size, userinfo_t info)
 	res = message_alloc();
 	bcopy(TIFA_IDENT, res->magic, sizeof(magic_t));
 	res->opcode = htobe32(opcode);
+	if (is_notar_node())
+		res->flags |= MESSAGE_FLAG_PEER;
 	res->userinfo = info;
 	res->payload_size = htobe32(size);
 
