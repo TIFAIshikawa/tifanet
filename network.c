@@ -775,12 +775,11 @@ message_broadcast_with_callback(opcode_t opcode, void *payload,
 	struct sockaddr_storage addr;
 	event_info_t *req;
 	message_t *msg;
-	size_t res = 0;
 	small_idx_t n;
+	size_t res;
 
 	n = MIN(100, peerlist.list4_size + peerlist.list6_size);
-
-	for (small_idx_t i = 0; i < n; i++) {
+	for (res = 0; res < n; res++) {
 		peer_address_random(&addr);
 
 		msg = message_create(opcode, size, info);
@@ -795,6 +794,10 @@ message_broadcast_with_callback(opcode_t opcode, void *payload,
 		} else {
 			message_free(msg);
 		}
+
+		// recalculate this, as the list might have changed due
+		// to a peer being removed from the list if it did not respond
+		n = MIN(100, peerlist.list4_size + peerlist.list6_size);
 	}
 
 	return (res);
