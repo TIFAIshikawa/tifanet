@@ -39,11 +39,11 @@
 
 
 typedef struct {
-        size_t list4_size;
-        size_t list6_size;
+        small_idx_t list4_size;
+        small_idx_t list6_size;
 
-        size_t list4_alloc;
-        size_t list6_alloc;
+        small_idx_t list4_alloc;
+        small_idx_t list6_alloc;
 
         struct in_addr *list4;
         struct in6_addr *list6;
@@ -129,6 +129,10 @@ extern peerlist_t peerlist;
 
 extern void peerlist_load(void);
 extern void peerlist_save(void);
+
+extern void peerlist_add(struct sockaddr_storage *addr);
+extern void peerlist_add_ipv4(struct in_addr addr);
+extern void peerlist_add_ipv6(struct in6_addr addr);
 
 extern char *peername(struct sockaddr_storage *addr, char *dst);
 

@@ -48,6 +48,11 @@
 
 typedef void (*opcode_callback_t)(event_info_t *info);
 
+typedef struct  __attribute__((__packed__)) __op_peerlist_response {
+	small_idx_t peers_ipv4_count;
+	small_idx_t peers_ipv6_count;
+} op_peerlist_response_t;
+
 typedef struct  __attribute__((__packed__)) __op_lastblockinfo_response {
 	big_idx_t index;
 	hash_t hash;
@@ -72,6 +77,8 @@ void op_pact(event_info_t *info);
 void op_gettxcache(event_info_t *info);
 void op_getnotars(event_info_t *info);
 
+void op_peerlist_server(event_info_t *info, network_event_t *nev);
+void op_peerlist_client(event_info_t *info, network_event_t *nev);
 void op_lastblockinfo_server(event_info_t *info, network_event_t *nev);
 void op_lastblockinfo_client(event_info_t *info, network_event_t *nev);
 void op_getblock_server(event_info_t *info, network_event_t *nev);
@@ -115,6 +122,10 @@ opcode_payload_size_valid(message_t *msg, int direction)
 
 	switch (opcode) {
 	case OP_PEERLIST:
+		if (direction == NETWORK_EVENT_TYPE_SERVER)
+			return (be32toh(msg->payload_size) == 0);
+		else
+			return (be32toh(msg->payload_size) >= sizeof(op_peerlist_response_t));
 	case OP_LASTBLOCKINFO:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (be32toh(msg->payload_size) == 0);
@@ -167,10 +178,89 @@ handle_network_call(event_info_t *info)
 void
 op_peerlist(event_info_t *info)
 {
-	//message_t rsp;
+	network_event_t *nev;
+	nev = info->payload;
 
-	//fill_message(&rsp, OP_PEERLIST, peerlist.list4, peerlist.list4_size);
-	//message_send(fd, &rsp,  NULL);
+	switch (nev->type) {
+	case NETWORK_EVENT_TYPE_SERVER:
+		op_peerlist_server(info, nev);
+		break;
+	case NETWORK_EVENT_TYPE_CLIENT:
+		op_peerlist_client(info, nev);
+		break;
+	default:
+		break;
+	}
+}
+
+void
+op_peerlist_server(event_info_t *info, network_event_t *nev)
+{
+	size_t size;
+	message_t *msg;
+	uint8_t *buf, *ptr;
+	size_t ipv4_size, ipv6_size;
+	op_peerlist_response_t *response;
+
+	ipv4_size = peerlist.list4_size * sizeof(struct in_addr);
+	ipv6_size = peerlist.list6_size * sizeof(struct in_addr);
+	size = sizeof(op_peerlist_response_t) + ipv4_size + ipv6_size;
+
+	buf = malloc(size);
+	response = (op_peerlist_response_t *)buf;
+
+	response->peers_ipv4_count = peerlist.list4_size;
+	response->peers_ipv6_count = peerlist.list6_size;
+
+	ptr = buf + sizeof(op_peerlist_response_t);
+	bcopy(peerlist.list4, ptr, ipv4_size);
+	ptr += ipv4_size;
+	bcopy(peerlist.list6, ptr, ipv6_size);
+
+	nev = info->payload;
+	nev->state = NETWORK_EVENT_STATE_HEADER;
+	nev->read_idx = 0;
+	nev->write_idx = 0;
+	nev->userdata = response;
+	nev->userdata_size = size;
+	msg = network_message(info);
+	msg->payload_size = htobe32(size);
+
+	event_update(info, EVENT_READ, EVENT_WRITE);
+	info->callback = message_write;
+	message_write(info, EVENT_WRITE);
+}
+
+void
+op_peerlist_client(event_info_t *info, network_event_t *nev)
+{
+	uint8_t *buf;
+	message_t *msg;
+	op_peerlist_response_t *response;
+	struct in_addr *addr4_list;
+	struct in6_addr *addr6_list;
+
+	msg = network_message(info);
+
+	buf = nev->userdata;
+	response = (op_peerlist_response_t *)buf;
+	buf += sizeof(op_peerlist_response_t);
+	addr4_list = (struct in_addr *)buf;
+	buf += response->peers_ipv4_count * sizeof(struct in_addr);
+	addr6_list = (struct in6_addr *)buf;
+	buf += response->peers_ipv6_count * sizeof(struct in6_addr);
+
+	if (buf - (uint8_t *)nev->userdata != be32toh(msg->payload_size)) {
+printf("gotten %ld != payload_size %d\n", buf - (uint8_t *)nev->userdata, be32toh(msg->payload_size));
+		return (message_cancel(info));
+}
+
+	for (small_idx_t i = 0; i < response->peers_ipv4_count; i++)
+		peerlist_add_ipv4(addr4_list[i]);
+	for (small_idx_t i = 0; i < response->peers_ipv6_count; i++)
+		peerlist_add_ipv6(addr6_list[i]);
+
+	message_cancel(info);
 }
 
 void
@@ -206,7 +296,8 @@ op_lastblockinfo_server(event_info_t *info, network_event_t *nev)
 	blockinfo = malloc(sizeof(op_lastblockinfo_response_t));
 	blockinfo->index = last->index;
 	bcopy(block_hash, blockinfo->hash, sizeof(hash_t));
-	bcopy(last->prev_block_hash, blockinfo->prev_block_hash, sizeof(hash_t));
+	bcopy(last->prev_block_hash, blockinfo->prev_block_hash,
+		sizeof(hash_t));
 
 	nev = info->payload;
 	nev->state = NETWORK_EVENT_STATE_HEADER;

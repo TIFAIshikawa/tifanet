@@ -81,10 +81,6 @@ static struct ifaddrs *__ifaddrs = NULL;
 
 static void peerlist_bootstrap(void);
 
-static void peerlist_add(struct sockaddr_storage *addr);
-static void peerlist_add_ipv4(struct in_addr addr);
-static void peerlist_add_ipv6(struct in6_addr addr);
-
 static void accept_notar_connection(event_info_t *, event_flags_t);
 
 static event_info_t *__listen_info = NULL;
