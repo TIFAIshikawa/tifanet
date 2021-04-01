@@ -168,8 +168,6 @@ notar_add(public_key_t new_notar)
 static void
 notar_tick(event_info_t *info, event_flags_t eventtype)
 {
-peerlist_request_broadcast();
-return;
 	block_generate_next();
 }
 
@@ -178,7 +176,7 @@ schedule_generate_block_retry(void)
 {
 //	lprintf("should create block but no pacts, delaying");
 
-	timer_set(5000, notar_tick, NULL);
+	timer_set(4000, notar_tick, NULL);
 }
 
 void

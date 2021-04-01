@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
+#include <string.h>
 #include <sodium.h>
 #include <strings.h>
 #ifdef __linux__
@@ -47,6 +48,7 @@
 #include "opcode_callback.h"
 
 typedef void (*opcode_callback_t)(event_info_t *info);
+typedef int (*opcode_ignore_callback_t)(event_info_t *info);
 
 typedef struct  __attribute__((__packed__)) __op_peerlist_response {
 	small_idx_t peers_ipv4_count;
@@ -77,6 +79,8 @@ void op_pact(event_info_t *info);
 void op_gettxcache(event_info_t *info);
 void op_getnotars(event_info_t *info);
 
+int op_block_announce_ignore(event_info_t *info);
+
 void op_peerlist_server(event_info_t *info, network_event_t *nev);
 void op_peerlist_client(event_info_t *info, network_event_t *nev);
 void op_lastblockinfo_server(event_info_t *info, network_event_t *nev);
@@ -89,6 +93,19 @@ void op_gettxcache_server(event_info_t *info, network_event_t *nev);
 void op_gettxcache_client(event_info_t *info, network_event_t *nev);
 void op_getnotars_server(event_info_t *info, network_event_t *nev);
 void op_getnotars_client(event_info_t *info, network_event_t *nev);
+
+opcode_ignore_callback_t opcode_ignore_callbacks[OP_MAXOPCODE] = {
+	NULL,			// OP_NONE
+	NULL,			// OP_PEERLIST
+	NULL,			// OP_LASTBLOCKINFO
+	NULL,			// OP_GETBLOCK
+	NULL,			// OP_NOTAR_ANNOUNCE
+	NULL,			// OP_NOTAR_DENOUNCE
+	op_block_announce_ignore, // OP_BLOCK_ANNOUNCE
+	NULL,			// OP_PACT
+	NULL,			// OP_GETTXCACHE
+	NULL,			// OP_GETNOTARS
+};
 
 opcode_callback_t opcode_callbacks[OP_MAXOPCODE] = {
 	NULL,			// OP_NONE
@@ -159,8 +176,20 @@ opcode_payload_size_valid(message_t *msg, int direction)
 	return (FALSE);
 }
 
+int
+opcode_message_ignore(event_info_t *info)
+{
+	message_t *msg;
+
+	msg = network_message(info);
+	if (opcode_ignore_callbacks[be16toh(msg->opcode)])
+		return (opcode_ignore_callbacks[be16toh(msg->opcode)](info));
+
+	return (FALSE);
+}
+
 void
-handle_network_call(event_info_t *info)
+opcode_execute(event_info_t *info)
 {
 	message_t *msg;
 
@@ -424,18 +453,38 @@ op_block_announce(event_info_t *info)
 {
 	network_event_t *nev;
 	raw_block_t *block;
+	big_idx_t index;
 	message_t *msg;
+	size_t size;
 
 	nev = info->payload;
 	block = nev->userdata;
-	lprintf("received block %ju", block_idx(block));
+	index = block_idx(block);
+	lprintf("received block %ju", index);
 
 	msg = network_message(info);
 
-	if (raw_block_validate(nev->userdata, be32toh(msg->payload_size)))
+	if (raw_block_validate(nev->userdata, be32toh(msg->payload_size))) {
 		raw_block_process(nev->userdata, nev->read_idx);
 
+		// get block from block storage (which is permanent, whereas
+		// nev->userdata will be freed), then redistribute
+        	block = block_load(index, &size);
+        	message_broadcast(OP_BLOCK_ANNOUNCE, block, size,
+			htobe64(index));
+	}
+
 	message_cancel(info);
+}
+
+int
+op_block_announce_ignore(event_info_t *info)
+{
+	message_t *msg;
+
+	msg = network_message(info);
+
+	return (block_exists(be64toh(msg->userinfo)));
 }
 
 void
@@ -579,9 +628,41 @@ op_gettxcache_server(event_info_t *info, network_event_t *nev)
 	message_write(info, EVENT_WRITE);
 }
 
+static int
+__cache_write(char *filename, char *buffer, size_t size)
+{
+	char tmp0[MAXPATHLEN + 1];
+	char tmp1[MAXPATHLEN + 1];
+	size_t w, wr;
+	FILE *f;
+
+	snprintf(tmp0, MAXPATHLEN, "blocks/%s.bin", filename);
+	config_path(tmp1, tmp0);
+	if (!(f = fopen(tmp1, "w+")))
+		return (FALSE);
+
+	for (w = wr = 0; w >= 0; wr += w)
+		w = fwrite(buffer + wr, 1, size - wr, f);
+
+	if (wr != size)
+		FAILTEMP("failed writing txcache: %s", strerror(errno));
+
+	fclose(f);
+
+	return (TRUE);
+}
+
 void
 op_gettxcache_client(event_info_t *info, network_event_t *nev)
 {
+	message_t *msg;
+
+	msg = network_message(info);
+
+	__cache_write("txcache", nev->userdata, be32toh(msg->payload_size));
+
+	info->on_close = NULL;
+	message_cancel(info);
 }
 
 void
@@ -638,4 +719,12 @@ op_getnotars_server(event_info_t *info, network_event_t *nev)
 void
 op_getnotars_client(event_info_t *info, network_event_t *nev)
 {
+	message_t *msg;
+
+	msg = network_message(info);
+
+	__cache_write("notarscache", nev->userdata, be32toh(msg->payload_size));
+
+	info->on_close = NULL;
+	message_cancel(info);
 }

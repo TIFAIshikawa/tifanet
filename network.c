@@ -51,6 +51,7 @@
 #include "notar.h"
 #include "config.h"
 #include "network.h"
+#include "peerlist.h"
 #include "opcode_callback.h"
 
 char *opcode_names[OP_MAXOPCODE] = {
@@ -66,24 +67,12 @@ char *opcode_names[OP_MAXOPCODE] = {
 	"OP_GETNOTARS"
 };
 
-peerlist_t peerlist = {
-	.list4_size = 0,
-	.list6_size = 0,
-	.list4_alloc = 0,
-	.list6_alloc = 0,
-	.list4 = NULL,
-	.list6 = NULL
-};
-
-static char *__network = "dev1";
-static const char *__bootstrap_server = "bootstrap.%s.tifa.network";
 static struct ifaddrs *__ifaddrs = NULL;
-
-static void peerlist_bootstrap(void);
 
 static void accept_notar_connection(event_info_t *, event_flags_t);
 
 static event_info_t *__listen_info = NULL;
+static int __ipv6_capable = 0;
 
 static void socket_set_async(int fd)
 {
@@ -105,198 +94,6 @@ socket_set_timeout(int fd, unsigned int sec_timeout)
 	timeout = sec_timeout * 1000;
 
 	setsockopt(fd, 6, 18, &timeout, sizeof(timeout));
-}
- 
-void
-peerlist_load()
-{
-	FILE *f;
-	int r, s, len;
-	char file[MAXPATHLEN + 1];
-	char tmp[INET6_ADDRSTRLEN + 2];
-	struct in_addr a4;
-	struct in6_addr a6;
-
-	peerlist.list4_alloc = 64;
-	peerlist.list4 = malloc(peerlist.list4_alloc * sizeof(struct in_addr));
-	peerlist.list6_alloc = 64;
-	peerlist.list6 = malloc(peerlist.list6_alloc * sizeof(struct in6_addr));
-
-	if ((f = fopen(config_path(file, "peerlist4.txt"), "r"))) {
-		r = s = 0;
-		while (!feof(f)) {
-			fgets(tmp, INET6_ADDRSTRLEN + 1, f);
-			len = strlen(tmp);
-			if (len > 1) {
-				tmp[len - 1] = '\0';
-				if (inet_pton(AF_INET, tmp, &a4) == 1) {
-					peerlist_add_ipv4(a4);
-					s++;
-				}
-				r++;
-			}
-		}
-		fclose(f);
-		lprintf("peerlist4: %d/%d peers loaded from cache", s, r - 1);
-	} else {
-		if (errno != ENOENT)
-			lprintf("peerlist4: %s: %s", file, strerror(errno));
-	}
-
-	if ((f = fopen(config_path(file, "peerlist6.txt"), "r"))) {
-		r = s = 0;
-		while (!feof(f)) {
-			fgets(tmp, INET6_ADDRSTRLEN + 1, f);
-			len = strlen(tmp);
-			if (len > 1) {
-				tmp[len - 1] = '\0';
-				if (inet_pton(AF_INET6, tmp, &a6) == 1) {
-					peerlist_add_ipv6(a6);
-					s++;
-				}
-				r++;
-			}
-		}
-		fclose(f);
-		lprintf("peerlist6: %d/%d peers loaded from cache", s, r - 1);
-	} else {
-		if (errno != ENOENT)
-			lprintf("peerlist6: %s: %s", file, strerror(errno));
-	}
-
-	peerlist_bootstrap();
-}
-
-void peerlist_save()
-{
-	FILE *f;
-	int w, len;
-	char tmp[INET6_ADDRSTRLEN + 2];
-
-	if ((f = fopen(config_path(tmp, "peerlist4.txt"), "w+"))) {
-		w = 0;
-		for (size_t i = 0; i < peerlist.list4_size; i++) {
-			inet_ntop(AF_INET, &peerlist.list4[i], tmp,
-				  INET_ADDRSTRLEN);
-			len = strlen(tmp);
-			tmp[len] = '\n';
-			len++;
-			if (fwrite(tmp, len, 1, f) > 0)
-				w++;
-		}
-		lprintf("peerlist4: %d/%d peers saved to cache", w,
-			peerlist.list4_size);
-		fclose(f);
-	} else {
-		lprintf("peerlist4: save to %s: %s", tmp, strerror(errno));
-	}
-
-	if ((f = fopen(config_path(tmp, "peerlist6.txt"), "w+"))) {
-		w = 0;
-		for (size_t i = 0; i < peerlist.list6_size; i++) {
-			inet_ntop(AF_INET6, &peerlist.list6[i], tmp,
-				  INET6_ADDRSTRLEN);
-			len = strlen(tmp);
-			tmp[len] = '\n';
-			len++;
-			if (fwrite(tmp, len, 1, f) > 0)
-				w++;
-		}
-		lprintf("peerlist6: %d/%d peers saved to cache", w,
-			peerlist.list6_size);
-		fclose(f);
-	} else {
-		lprintf("peerlist6: save to %s: %s", tmp, strerror(errno));
-	}
-}
-
-void
-peerlist_request_broadcast(void)
-{
-	message_broadcast(OP_PEERLIST, NULL, 0, 0);
-}
-
-static void
-peerlist_bootstrap(void)
-{
-	struct addrinfo hints, *info, *addr;
-	char hostname[64];
-
-	bzero(&hints, sizeof(hints));
-	hints.ai_family = PF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags |= AI_CANONNAME;
-
-	snprintf(hostname, 63, __bootstrap_server, __network);
-	hostname[63] = '\0';
-	if (getaddrinfo(hostname, NULL, &hints, &info) == 0) {
-		for (addr = info; addr; addr = addr->ai_next)
-			peerlist_add((struct sockaddr_storage *)addr->ai_addr);
-		freeaddrinfo(info);
-	} else {
-		lprintf("peerlist_bootstrap: %s: %s", hostname,
-			strerror(errno));
-	}
-}
-
-void
-peerlist_add(struct sockaddr_storage *addr)
-{
-	struct sockaddr_in *a4;
-	struct sockaddr_in6 *a6;
-
-	switch (addr->ss_family) {
-	case AF_INET:
-		a4 = (struct sockaddr_in *)addr;
-		peerlist_add_ipv4(a4->sin_addr);
-		break;
-	case AF_INET6:
-		a6 = (struct sockaddr_in6 *)addr;
-		peerlist_add_ipv6(a6->sin6_addr);
-		break;
-	default:
-		lprintf("peerlist_add: unsupported ss_family: %d\n",
-		addr->ss_family);
-		break;
-	}
-}
-
-void
-peerlist_add_ipv4(struct in_addr addr)
-{
-	for (size_t i = 0; i < peerlist.list4_size; i++) {
-		if (memcmp(&peerlist.list4[i], &addr,
-			sizeof(struct in_addr)) == 0)
-			return;
-	}
-
-	if (peerlist.list4_size == peerlist.list4_alloc) {
-		peerlist.list4_alloc += 64;
-		peerlist.list4 = realloc(peerlist.list4, peerlist.list4_alloc *
-					 sizeof(struct in_addr));
-	}
-
-	peerlist.list4[peerlist.list4_size] = addr;
-	peerlist.list4_size++;
-}
-
-void
-peerlist_add_ipv6(struct in6_addr addr)
-{
-	for (size_t i = 0; i < peerlist.list6_size; i++) {
-		if (memcmp(&peerlist.list6[i], &addr,
-			sizeof(struct in6_addr)) == 0)
-			return;
-	}
-
-	if (peerlist.list6_size == peerlist.list6_alloc) {
-		peerlist.list6_alloc += 64;
-		peerlist.list6 = realloc(peerlist.list6, peerlist.list6_alloc *
-					 sizeof(struct in6_addr));
-	}
-
-	peerlist.list6[peerlist.list6_size] = addr;
-	peerlist.list6_size++;
 }
 
 char *
@@ -325,6 +122,24 @@ peername(struct sockaddr_storage *addr, char *dst)
 	return (dst);
 }
 
+int
+network_is_ipv6_capable(void)
+{
+	return (__ipv6_capable);
+}
+
+static int
+socket_create(int domain)
+{
+	int res;
+
+	if ((res = socket(domain, SOCK_STREAM, 0)) == -1)
+		lprintf("socket_create: socket(%d): %s",
+			domain, strerror(errno));
+
+	return (res);
+}
+
 static int
 __listen_socket_open(struct sockaddr_storage *addr)
 {
@@ -338,8 +153,8 @@ __listen_socket_open(struct sockaddr_storage *addr)
 	default: return (FALSE);
 	}
 
-	if ((fd = socket(addr->ss_family, SOCK_STREAM, 0)) == -1)
-		FAILBOOL("listen_socket_open: socket: %s", strerror(errno));
+	if ((fd = socket_create(addr->ss_family)) == -1)
+		return (FALSE);
 
 	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
 		close(fd);
@@ -376,8 +191,10 @@ listen_socket_open()
 	a6.sin6_family = AF_INET6;
 	a6.sin6_addr = in6addr_any;
 	a6.sin6_port = htons(TIFA_NETWORK_PORT);
-	if (__listen_socket_open((struct sockaddr_storage *)&a6))
+	if (__listen_socket_open((struct sockaddr_storage *)&a6)) {
+		__ipv6_capable = 1;
 		return;
+	}
 
 	bzero(&a4, sizeof(struct sockaddr_in));
 	a4.sin_family = AF_INET;
@@ -391,11 +208,12 @@ listen_socket_open()
 void
 accept_notar_connection(event_info_t *info, event_flags_t eventtype)
 {
-	struct sockaddr_in addr;
+	struct sockaddr_storage addr;
 	network_event_t *nev;
 	socklen_t len;
 	int fd;
 
+	len = sizeof(struct sockaddr_storage);
 	if ((fd = accept(info->ident, (struct sockaddr *)&addr, &len)) == -1)
 		FAIL(EX_TEMPFAIL, "accept_notar_connection: accept: %s",
 				  strerror(errno));
@@ -405,6 +223,8 @@ accept_notar_connection(event_info_t *info, event_flags_t eventtype)
 	socket_set_timeout(fd, 10);
 
 	nev = calloc(1, sizeof(network_event_t));
+	bcopy(&addr, &nev->remote_addr, len);
+	nev->remote_addr_len = len;
 	nev->type = NETWORK_EVENT_TYPE_SERVER;
 	event_add(fd, EVENT_READ | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
 		message_read, nev);
@@ -416,17 +236,50 @@ message_cancel(event_info_t *info)
 	network_event_t *nev;
 
 	nev = info->payload;
-	if (nev->userdata && info->flags & EVENT_FREE_PAYLOAD)
-		free(nev->userdata);
+//	if (nev->userdata)
+//		free(nev->userdata);
 
 	event_remove(info);
+}
+
+static int
+message_header_validate(event_info_t *info)
+{
+	network_event_t *nev;
+	small_idx_t size;
+	message_t *msg;
+
+	nev = info->payload;
+	msg = &nev->message_header;
+
+	if (bcmp(msg->magic, TIFA_IDENT, sizeof(magic_t)) != 0) {
+		lprintf("message_read: invalid magic");
+		return (FALSE);
+	}
+	if ((size = be32toh(msg->payload_size))) {
+		if (size > MAXPACKETSIZE) {
+			lprintf("message_read: size too large: %d", size);
+			return (FALSE);
+		}
+		if (!opcode_valid(msg)) {
+			lprintf("message_read: opcode invalid: %u",
+				be16toh(msg->opcode));
+			return (FALSE);
+		}
+		if (!opcode_payload_size_valid(msg, nev->type)) {
+			lprintf("message_read: size %d not valid for opcode "
+				"%d", size, be16toh(msg->opcode));
+			return (FALSE);
+		}
+	}
+
+	return (TRUE);
 }
 
 void
 message_read(event_info_t *info, event_flags_t eventtype)
 {
 	network_event_t *nev;
-	small_idx_t size;
 	message_t *msg;
 	char *ptr;
 	int want;
@@ -441,45 +294,21 @@ message_read(event_info_t *info, event_flags_t eventtype)
 	case NETWORK_EVENT_STATE_HEADER:
 		ptr = (void *)&nev->message_header + nev->read_idx;
 		want = sizeof(message_t) - nev->read_idx;
-		if ((r = read(info->ident, ptr, want)) == -1) {
-			if (errno != EAGAIN) {
+		if ((r = read(info->ident, ptr, want)) <= 0) {
+			if (errno != EAGAIN && errno != EINTR)
 				message_cancel(info);
-				return;
-			}
-			r = 0;
+			return;
 		}
 		nev->read_idx += r;
 		if (nev->read_idx == sizeof(message_t)) {
-			if (bcmp(msg->magic, TIFA_IDENT,
-				sizeof(magic_t)) != 0) {
-				printf("message_read: invalid magic\n");
-				message_cancel(info);
-				return;
-			}
-			if (msg->flags & MESSAGE_FLAG_PEER)
+			if (!message_header_validate(info))
+				return message_cancel(info);
+			if (opcode_message_ignore(info))
+				return message_cancel(info);
+
+			nev->userdata = malloc(be32toh(msg->payload_size));
+			if (be16toh(msg->flags) & MESSAGE_FLAG_PEER)
 				peerlist_add(&nev->remote_addr);
-			if ((size = be32toh(msg->payload_size))) {
-				if (size > MAXPACKETSIZE) {
-					printf("message_read: size too large: "
-						"%d\n", size);
-					message_cancel(info);
-					return;
-				}
-				if (!opcode_valid(msg)) {
-					printf("message_read: opcode invalid: "
-						"%u\n", be16toh(msg->opcode));
-					message_cancel(info);
-					return;
-				}
-				if (!opcode_payload_size_valid(msg, nev->type)) {
-					printf("message_read: size %d not "
-						"valid for opcode %d\n", size,
-						be16toh(msg->opcode));
-					message_cancel(info);
-					return;
-				}
-				nev->userdata = malloc(size);
-			}
 			nev->read_idx = 0;
 			nev->state = NETWORK_EVENT_STATE_BODY;
 			message_read(info, eventtype);
@@ -501,7 +330,7 @@ message_read(event_info_t *info, event_flags_t eventtype)
 
 		if (nev->read_idx == be32toh(msg->payload_size)) {
 			event_update(info, EVENT_READ, EVENT_WRITE);
-			handle_network_call(info);
+			opcode_execute(info);
 		}
 		break;
 	default:
@@ -590,7 +419,7 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 		return (NULL);
 	}
 
-	if ((fd = socket(addr->ss_family, SOCK_STREAM, 0)) == -1)
+	if ((fd = socket_create(addr->ss_family)) == -1)
 		FAIL(EX_TEMPFAIL, "request_send: socket: %s\n",
 			strerror(errno));
 
@@ -600,11 +429,12 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 		// EINPROGRESS will be handled by event loop. Other errors
 		// are fatal. Don't log common errors though.
 		if (errno != EINPROGRESS) {
-			if (errno != ECONNREFUSED && errno != ECONNRESET &&
-				errno != EINTR)
+//			if (errno != ECONNREFUSED && errno != ECONNRESET &&
+//				errno != EINTR)
 				lprintf("request_send: connect: %s",
 					strerror(errno));
 			close(fd);
+			peerlist_remove(addr);
 			return (NULL);
 		}
 	}
@@ -613,7 +443,7 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 	nev->type = NETWORK_EVENT_TYPE_CLIENT;
 	bcopy(message, &nev->message_header, sizeof(message_t));
 	nev->userdata = payload;
-	bcopy(&nev->remote_addr, addr, len);
+	bcopy(addr, &nev->remote_addr, len);
 	nev->remote_addr_len = len;
 	nev->userdata_size = be32toh(message->payload_size);
 
@@ -666,6 +496,7 @@ message_create(opcode_t opcode, small_idx_t size, userinfo_t info)
 	res->opcode = htobe16(opcode);
 	if (is_notar_node())
 		res->flags |= MESSAGE_FLAG_PEER;
+	res->flags = htobe16(res->flags);
 	res->userinfo = info;
 	res->payload_size = htobe32(size);
 
@@ -697,69 +528,88 @@ message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 	return (NULL);
 }
 
-void
-peer_address_random(struct sockaddr_storage *addr)
-{
-	struct sockaddr_in6 *a6;
-	struct sockaddr_in *a4;
-	int version;
-	int rnd;
-
-	bzero(addr, sizeof(struct sockaddr_storage));
-
-	if (peerlist.list6_size)
-		version = randombytes_random() % 2;
-	else
-		version = 0;
-
-	if (version == 0) {
-		rnd = randombytes_random() % peerlist.list4_size;
-		a4 = (struct sockaddr_in *)addr;
-		a4->sin_family = AF_INET;
-		a4->sin_addr = peerlist.list4[rnd];
-	} else {
-		rnd = randombytes_random() % peerlist.list6_size;
-		a6 = (struct sockaddr_in6 *)addr;
-		a6->sin6_family = AF_INET6;
-		a6->sin6_addr = peerlist.list6[rnd];
-	}
-}
-
 int
-is_local_address(struct sockaddr_storage *addr)
+is_local_interface_address(struct sockaddr_storage *addr)
 {
+	socklen_t slen;
 	struct sockaddr_in *ifa4, *a4;
 	struct sockaddr_in6 *ifa6, *a6;
 
 	if (!__ifaddrs) {
 		if (getifaddrs(&__ifaddrs) == -1) {
-			lprintf("is_local_address: getifaddrs: %s",
+			lprintf("is_local_interface_address: getifaddrs: %s",
 				strerror(errno));
 			return (FALSE);
 		}
 	}
 
 	for (struct ifaddrs *ifa = __ifaddrs; ifa; ifa = ifa->ifa_next) {
-		switch (addr->ss_family) {
+		if (ifa->ifa_addr->sa_family != addr->ss_family)
+			continue;
+		switch (ifa->ifa_addr->sa_family) {
 		case AF_INET:
 			a4 = (struct sockaddr_in *)addr;
 			ifa4 = (struct sockaddr_in *)ifa->ifa_addr;
-			if (bcmp(&ifa4->sin_addr, &a4->sin_addr,
-				sizeof(struct in_addr)) == 0)
+			slen = sizeof(struct in_addr);
+			if (bcmp(&ifa4->sin_addr, &a4->sin_addr, slen) == 0)
 				return (TRUE);
+			break;
 		case AF_INET6:
 			a6 = (struct sockaddr_in6 *)addr;
 			ifa6 = (struct sockaddr_in6 *)ifa->ifa_addr;
-			if (bcmp(&ifa6->sin6_addr, &a6->sin6_addr,
-				sizeof(struct in_addr)) == 0)
+			slen = sizeof(struct in6_addr);
+			if (bcmp(&ifa6->sin6_addr, &a6->sin6_addr, slen) == 0)
 				return (TRUE);
+			break;
 		default:
-			return (FALSE);
+			continue;
 		}
 	}
 
-
 	return (FALSE);
+}
+
+int
+is_nonroutable_address(struct sockaddr_storage *addr)
+{
+#if defined(ALPHA) || defined(BETA)
+	return (FALSE);
+#else
+	struct sockaddr_in *a4;
+	uint32_t a4h;
+	uint8_t *a4digits;
+	struct sockaddr_in6 *a6;
+
+	// These checks are all quite rudimentary. The point is to ignore
+	// e.g. obvious RFC1918 and RFC5771 addresses, since peers need to
+	// be able to all connect to each other. If some cases slip through,
+	// such as subnet broadcast addresses, so be it; those will be deleted
+	// anyway when connection attempts fail.
+	switch (addr->ss_family) {
+	case AF_INET:
+		a4 = (struct sockaddr_in *)addr;
+		a4h = be32toh(a4->sin_addr.s_addr);
+		a4digits = (uint8_t *)&a4h;
+		if (a4digits[0] == 127)
+			return (TRUE);
+		if (a4digits[0] == 10)
+			return (TRUE);
+		if (a4digits[0] == 172 && a4digits[1] >= 16 && a4digits[1] < 32)
+			return (TRUE);
+		if (a4digits[0] == 192 && a4digits[1] == 168)
+			return (TRUE);
+		if (a4digits[0] >= 224 && a4digits[0] < 240)
+			return (TRUE);
+		if (a4h == 0x00000000 || a4h == 0xffffffff)
+			return (TRUE);
+		break;
+	case AF_INET6:
+		a6 = (struct sockaddr_in6 *)addr;
+		break;
+	}
+
+	return (TRUE);
+#endif
 }
 
 size_t
@@ -785,7 +635,10 @@ message_broadcast_with_callback(opcode_t opcode, void *payload,
 
 	n = MIN(100, peerlist.list4_size + peerlist.list6_size);
 	for (res = 0; res < n; res++) {
-		peer_address_random(&addr);
+		if (!peerlist_address_random(&addr))
+			return (res);
+		if (is_local_interface_address(&addr)) // res will be bodged
+			continue;
 
 		msg = message_create(opcode, size, info);
 
@@ -833,7 +686,9 @@ getblock(big_idx_t index)
 	struct sockaddr_storage addr;
 	event_info_t *info;
 
-	peer_address_random(&addr);
+	if (!peerlist_address_random(&addr))
+		return;
+
 	lprintf("asking peer %s for block %ju", peername(&addr, tmp), index);
 	if ((info = message_send(&addr, OP_GETBLOCK, NULL, 0, htobe64(index))))
 		info->on_close = __getblock_again;

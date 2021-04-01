@@ -53,7 +53,7 @@
 /*     If you fork TIFAnet, change these defines!!!!     */
 /* vv =============================================== vv */
 #define TIFA_IDENT		"TIFA"
-#define TIFA_NODE_IDENT		"N" TIFA_IDENT
+#define TIFA_NODE_IDENT		TIFA_IDENT "N"
 #if defined(ALPHA)
 #define TIFA_NETWORK_PORT	6172
 #elif defined(BETA)

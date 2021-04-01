@@ -35,6 +35,7 @@
 #else
 #  include <sys/endian.h>
 #endif
+#include "peerlist.h"
 #include "network.h"
 #include "config.h"
 #include "pact.h"
@@ -110,15 +111,23 @@ extern void getblocks(big_idx_t target_idx);
 
 extern int raw_block_validate(raw_block_t *raw_block, size_t blocksize); 
 
+extern void block_poll_start(void);
+
+inline static int
+block_exists(big_idx_t index)
+{
+	return (index <= block_idx_last());
+}
+
 inline static big_idx_t
 block_idx(raw_block_t *raw_block)
 {
-	return be64toh(raw_block->index);
+	return (be64toh(raw_block->index));
 }
 
 inline static small_idx_t
 num_pacts(raw_block_t *raw_block)
 {
-	return be32toh(raw_block->num_pacts);
+	return (be32toh(raw_block->num_pacts));
 }
 #endif /* __TIFA_BLOCK_H */

@@ -37,12 +37,14 @@
 #include <strings.h>
 #include <sysexits.h>
 #include <sys/stat.h>
+#include "peerlist.h"
 #include "network.h"
 #include "txcache.h"
 #include "config.h"
 #include "wallet.h"
 #include "event.h"
 #include "notar.h"
+#include "cache.h"
 #include "node.h"
 #include "lock.h"
 #include "log.h"
@@ -140,13 +142,17 @@ main(int argc, char *argv[])
 	node_keypair_load();
 	wallets_load();
 	peerlist_load();
-	block_last_load();
-	notars_cache_load();
-	txcache_load();
-	if (notars_last_block_idx() != txcache_last_block_idx()) {
-		lprintf("notarscache block idx %ju != txcache block idx %ju",
-			notars_last_block_idx(), txcache_last_block_idx());
-		exit(EX_TEMPFAIL);
+
+	if (!is_caches_only()) {
+		block_last_load();
+		notars_cache_load();
+		txcache_load();
+		if (notars_last_block_idx() != txcache_last_block_idx()) {
+			lprintf("notarscache block idx %ju != txcache block "
+				"idx %ju", notars_last_block_idx(),
+				txcache_last_block_idx());
+			exit(EX_TEMPFAIL);
+		}
 	}
 
 	signal(SIGTERM, save_state);
@@ -185,14 +191,21 @@ main(int argc, char *argv[])
 	peerlist_request_broadcast();
 
 	blockchain_set_updating(1);
-	if (skip_update)
-		daemon_start();
-	else
-		blockchain_update();
+	if (is_caches_only()) {
+		if (!skip_update)
+			cache_download();
+	} else {
+		if (skip_update)
+			daemon_start();
+		else
+			blockchain_update();
+	}
 	blockchain_set_updating(0);
 
 	if (is_notar_node())
 		notar_elect_next();
+
+	block_poll_start();
 
 	event_loop_start();
 

@@ -38,17 +38,6 @@
 #include "address.h"
 
 
-typedef struct {
-        small_idx_t list4_size;
-        small_idx_t list6_size;
-
-        small_idx_t list4_alloc;
-        small_idx_t list6_alloc;
-
-        struct in_addr *list4;
-        struct in6_addr *list6;
-} peerlist_t;
-
 typedef char magic_t[4];
 typedef uint16_t opcode_t;
 
@@ -81,9 +70,8 @@ enum opcodes {
 };
 
 enum message_flags {
-	MESSAGE_FLAG_PEER,		// ask to join the remote's peerlist
-
-	MESSAGE_FLAG_MAX
+	MESSAGE_FLAG_NONE = 0,
+	MESSAGE_FLAG_PEER = (1 << 0)	// ask to join the remote's peerlist
 };
 
 extern char *opcode_names[];
@@ -125,22 +113,12 @@ typedef struct __network_event {
 	size_t userdata_size;
 } network_event_t;
 
-extern peerlist_t peerlist;
-
-extern void peerlist_load(void);
-extern void peerlist_save(void);
-
-extern void peerlist_add(struct sockaddr_storage *addr);
-extern void peerlist_add_ipv4(struct in_addr addr);
-extern void peerlist_add_ipv6(struct in6_addr addr);
-
-extern void peerlist_request_broadcast(void);
-
 extern char *peername(struct sockaddr_storage *addr, char *dst);
 
-extern int is_local_address(struct sockaddr_storage *addr);
+extern int network_is_ipv6_capable(void);
 
-extern void peer_address_random(struct sockaddr_storage *addr);
+extern int is_local_interface_address(struct sockaddr_storage *addr);
+extern int is_nonroutable_address(struct sockaddr_storage *addr);
 
 extern void listen_socket_open(void);
 

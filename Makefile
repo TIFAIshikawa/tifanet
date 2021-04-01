@@ -7,7 +7,7 @@ LDFLAGS	+=-lsodium
 
 BASENAME=tifa
 
-SRCS	=config.c base64.c error.c pact.c txcache.c cache.c wallet.c network.c opcode_callback.c notar.c keypair.c address.c block.c event.c node.c log.c lock.c
+SRCS	=config.c base64.c error.c pact.c txcache.c cache.c wallet.c peerlist.c network.c opcode_callback.c notar.c keypair.c address.c block.c event.c node.c log.c lock.c
 
 DSRCS	=main-daemon.c $(SRCS)
 DOBJS	=$(DSRCS:.c=.o)

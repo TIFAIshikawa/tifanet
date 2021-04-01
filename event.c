@@ -53,6 +53,8 @@ static int __timerfd = -1;
 #define NUM_EVENTS 128
 static event_info_t *__events_to_remove[NUM_EVENTS];
 
+static void add_info_to_remove(event_info_t *info);
+
 void
 event_handler_init()
 {
@@ -229,8 +231,12 @@ event_remove(event_info_t *info)
 	if (info->flags & EVENT_TIMER)
 		FAIL(EX_SOFTWARE, "event_remove: info %p is a timer", info);
 
-	event_update(info, EVENT_WRITE, EVENT_READ);
-	shutdown(info->ident, SHUT_WR);
+//	event_update(info, EVENT_WRITE, EVENT_READ);
+//	shutdown(info->ident, SHUT_WR);
+	if (info->on_close)
+		info->on_close(info, 0);
+	close(info->ident);
+	add_info_to_remove(info);
 }
 
 static void
@@ -320,6 +326,7 @@ event_process(time_t t, struct kevent event)
 		info->callback(info, eventflags);
 		timer_remove(info);
 	} else {
+/*
 		pending = -1;
 		ioctl(fd, FIONREAD, &pending, sizeof(int));
 #ifdef __linux__
@@ -333,6 +340,7 @@ event_process(time_t t, struct kevent event)
 			add_info_to_remove(info);
 			return;
 		}
+*/
 		if (info->flags & EVENT_TIMEOUT) {
 			if (t - info->time < 30)
 				info->callback(info, eventflags);

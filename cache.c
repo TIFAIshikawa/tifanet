@@ -48,3 +48,10 @@ cache_hash(hash_t resulthash)
 			   (void *)hash, sizeof(hash_t) * CACHE_HASH_AMOUNT,
 			   NULL, 0);
 }
+
+void
+cache_download(void)
+{
+	message_broadcast(OP_GETTXCACHE, NULL, 0, 0);
+	message_broadcast(OP_GETNOTARS, NULL, 0, 0);
+}

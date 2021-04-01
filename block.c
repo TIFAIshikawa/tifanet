@@ -810,10 +810,12 @@ void
 blockchain_update()
 {
 	event_info_t *info;
-	char tmp[INET6_ADDRSTRLEN];
+	char tmp[INET6_ADDRSTRLEN + 1];
 	struct sockaddr_storage addr;
 
-	peer_address_random(&addr);
+	if (!peerlist_address_random(&addr))
+		return;
+
 	lprintf("asking peer %s for last block...", peername(&addr, tmp));
 	info = message_send(&addr, OP_LASTBLOCKINFO, NULL, 0, 0);
 
@@ -852,4 +854,17 @@ getblocks(big_idx_t target_idx)
 
 	cur_idx++;
 	getblock(cur_idx);
+}
+
+void
+__block_poll_tick(event_info_t *info, event_flags_t eventtype)
+{
+	message_broadcast(OP_GETBLOCK, NULL, 0, htobe64(block_idx_last() + 1));
+	block_poll_start();
+}
+
+void
+block_poll_start(void)
+{
+	timer_set(5000, __block_poll_tick, NULL);
 }

@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  * 
- * Copyright (c) 2018, Mitsumete Ishikawa
+ * Copyright (c) 2021, Mitsumete Ishikawa
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -27,14 +27,37 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __TIFA_CACHE_H
-#define __TIFA_CACHE_H
+#ifndef __TIFA_PEERLIST_H
+#define __TIFA_PEERLIST_H
 
+#include <ifaddrs.h>
+#include <sys/types.h>
+#include <netinet/in.h>
 #include "config.h"
-#include "keypair.h"
 
-extern void cache_hash(hash_t resulthash);
 
-extern void cache_download(void);
+typedef struct {
+        small_idx_t list4_size;
+        small_idx_t list6_size;
 
-#endif /* __TIFA_NODE_H */
+        struct in_addr *list4;
+        struct in6_addr *list6;
+} peerlist_t;
+
+extern peerlist_t peerlist;
+
+extern void peerlist_load(void);
+extern void peerlist_save(void);
+
+extern void peerlist_add(struct sockaddr_storage *addr);
+extern void peerlist_add_ipv4(struct in_addr addr);
+extern void peerlist_add_ipv6(struct in6_addr addr);
+extern void peerlist_remove(struct sockaddr_storage *addr);
+extern void peerlist_remove_ipv4(struct in_addr addr);
+extern void peerlist_remove_ipv6(struct in6_addr addr);
+
+extern void peerlist_request_broadcast(void);
+
+extern int peerlist_address_random(struct sockaddr_storage *addr);
+
+#endif /* __TIFA_PEERLIST_H */
