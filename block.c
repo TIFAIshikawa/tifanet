@@ -856,7 +856,7 @@ getblocks(big_idx_t target_idx)
 	getblock(cur_idx);
 }
 
-void
+static void
 __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 {
 	message_broadcast(OP_GETBLOCK, NULL, 0, htobe64(block_idx_last() + 1));

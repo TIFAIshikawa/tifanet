@@ -481,10 +481,12 @@ int
 op_block_announce_ignore(event_info_t *info)
 {
 	message_t *msg;
+	int res;
 
 	msg = network_message(info);
+	res = block_exists(be64toh(msg->userinfo));
 
-	return (block_exists(be64toh(msg->userinfo)));
+	return (res);
 }
 
 void

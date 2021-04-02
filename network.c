@@ -470,46 +470,21 @@ network_message(event_info_t *info)
 	return &network_event(info)->message_header;
 }
 
-static message_t *
-message_alloc(void)
-{
-	message_t *res;
-
-	res = calloc(1, sizeof(message_t));
-#ifdef DEBUG_ALLOC
-	printf("+MESSAGE %p\n", res);
-#endif
-
-	return (res);
-}
-
-static message_t *
-message_create(opcode_t opcode, small_idx_t size, userinfo_t info)
+static void
+message_init(message_t *msg, opcode_t opcode, small_idx_t size, userinfo_t info)
 {
 	time64_t t;
-	message_t *res;
 
 	t = time(NULL);
 
-	res = message_alloc();
-	bcopy(TIFA_IDENT, res->magic, sizeof(magic_t));
-	res->opcode = htobe16(opcode);
+	bzero(msg, sizeof(message_t));
+	bcopy(TIFA_IDENT, msg->magic, sizeof(magic_t));
+	msg->opcode = htobe16(opcode);
 	if (is_notar_node())
-		res->flags |= MESSAGE_FLAG_PEER;
-	res->flags = htobe16(res->flags);
-	res->userinfo = info;
-	res->payload_size = htobe32(size);
-
-	return (res);
-}
-
-static void
-message_free(message_t *message)
-{
-	free(message);
-#ifdef DEBUG_ALLOC
-	printf("-MESSAGE %p\n", message);
-#endif
+		msg->flags |= MESSAGE_FLAG_PEER;
+	msg->flags = htobe16(msg->flags);
+	msg->userinfo = info;
+	msg->payload_size = htobe32(size);
 }
 
 event_info_t *
@@ -517,14 +492,13 @@ message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 	small_idx_t size, userinfo_t info)
 {
 	event_info_t *res;
-	message_t *msg;
+	message_t msg;
 
-	msg = message_create(opcode, size, info);
+	message_init(&msg, opcode, size, info);
 
-	if ((res = request_send(addr, msg, payload)))
+	if ((res = request_send(addr, &msg, payload)))
 		return (res);
 
-	message_free(msg);
 	return (NULL);
 }
 
@@ -629,7 +603,7 @@ message_broadcast_with_callback(opcode_t opcode, void *payload,
 #endif
 	struct sockaddr_storage addr;
 	event_info_t *req;
-	message_t *msg;
+	message_t msg;
 	small_idx_t n;
 	size_t res;
 
@@ -640,17 +614,15 @@ message_broadcast_with_callback(opcode_t opcode, void *payload,
 		if (is_local_interface_address(&addr)) // res will be bodged
 			continue;
 
-		msg = message_create(opcode, size, info);
+		message_init(&msg, opcode, size, info);
 
 #ifdef NETWORK_DEBUG
 		lprintf("broadcasting message %s to %s",
 			opcode_names[opcode], peername(&addr, tmp));
 #endif
-		if ((req = request_send(&addr, msg, payload))) {
+		if ((req = request_send(&addr, &msg, payload))) {
 			req->on_close = callback;
 			res++;
-		} else {
-			message_free(msg);
 		}
 
 		// recalculate this, as the list might have changed due

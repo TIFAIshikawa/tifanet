@@ -326,7 +326,6 @@ event_process(time_t t, struct kevent event)
 		info->callback(info, eventflags);
 		timer_remove(info);
 	} else {
-/*
 		pending = -1;
 		ioctl(fd, FIONREAD, &pending, sizeof(int));
 #ifdef __linux__
@@ -334,13 +333,10 @@ event_process(time_t t, struct kevent event)
 #else
 		if (event.flags & EV_EOF && !pending) {
 #endif
-			if (info->on_close)
-				info->on_close(info, 0);
-			close(fd);
-			add_info_to_remove(info);
+			event_remove(info);
 			return;
 		}
-*/
+
 		if (info->flags & EVENT_TIMEOUT) {
 			if (t - info->time < 30)
 				info->callback(info, eventflags);
