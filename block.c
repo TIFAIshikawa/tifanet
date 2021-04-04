@@ -227,7 +227,8 @@ add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt)
 		FAIL(EX_SOFTWARE, "new block %ju: pact 0 already filled",
 			block->index);
 
-	wallet = wallets()[0];
+	if (!(wallet = wallet_load("notar")))
+		wallet = wallet_create("notar");
 	addresses = wallet_addresses(wallet, &num_addresses);
 
 	feeaddress = (void *)address_public_key(addresses[0]);

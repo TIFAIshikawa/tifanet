@@ -47,6 +47,20 @@ struct __wallet {
 static wallet_t **__wallets = NULL;
 static size_t __num_wallets = 0;
 
+static void
+wallet_add(wallet_t *wallet)
+{
+	size_t wlen;
+
+	wlen = sizeof(wallet_t *);
+	if (__num_wallets % 10 == 0) {
+		__wallets = realloc(__wallets, (__num_wallets + 10) * wlen);
+		bzero(__wallets + __num_wallets, 10 * wlen);
+	}
+	__wallets[__num_wallets] = wallet;
+	__num_wallets++;
+}
+
 wallet_t **
 wallets_load()
 {
@@ -55,18 +69,12 @@ wallets_load()
 	char tmp[MAXPATHLEN + 1];
 
 	__wallets = calloc(10, sizeof(wallet_t));
-	__wallets[0] = wallet_create(NULL);
-	__num_wallets = 1;
+	wallet_create(NULL);
 
 	if ((dir = opendir(config_path(tmp, "wallets")))) {
 		while ((ent = readdir(dir))) {
-			if (ent->d_type & DT_DIR && ent->d_name[0] != '.' &&
-			    strcmp(ent->d_name, "default") != 0) {
-				if (__num_wallets % 10 == 0)
-					__wallets = realloc(__wallets, (__num_wallets + 10) * sizeof(wallet_t *));
-				__wallets[__num_wallets] = wallet_load(ent->d_name);
-				__num_wallets++;
-			}
+			if (ent->d_type & DT_DIR && ent->d_name[0] != '.')
+				wallet_add(wallet_load(ent->d_name));
 		}
 		closedir(dir);
 	}
@@ -150,6 +158,8 @@ wallet_create(const char *name)
 
 	wallet_save(res); // saves the address
 
+	wallet_add(res);
+
 	lprintf("created wallet '%s', %s", res->name,
 		address_name(res->addresses[0]));
 
@@ -167,6 +177,10 @@ wallet_load(const char *name)
 
 	if (!wallet_exists(name))
 		return NULL;
+
+	for (size_t i = 0; __wallets[i]; i++)
+		if (strcmp(name, wallet_name(__wallets[i])) == 0)
+			return (__wallets[i]);
 
 	res = wallet_alloc(name);
 

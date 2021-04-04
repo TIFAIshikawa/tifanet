@@ -231,8 +231,6 @@ event_remove(event_info_t *info)
 	if (info->flags & EVENT_TIMER)
 		FAIL(EX_SOFTWARE, "event_remove: info %p is a timer", info);
 
-//	event_update(info, EVENT_WRITE, EVENT_READ);
-//	shutdown(info->ident, SHUT_WR);
 	if (info->on_close)
 		info->on_close(info, 0);
 	close(info->ident);

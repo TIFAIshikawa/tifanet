@@ -70,6 +70,7 @@ char *opcode_names[OP_MAXOPCODE] = {
 static struct ifaddrs *__ifaddrs = NULL;
 
 static void accept_notar_connection(event_info_t *, event_flags_t);
+static void message_event_on_close(event_info_t *, event_flags_t);
 
 static event_info_t *__listen_info = NULL;
 static int __ipv6_capable = 0;
@@ -240,6 +241,20 @@ message_cancel(event_info_t *info)
 //		free(nev->userdata);
 
 	event_remove(info);
+}
+
+static void
+message_event_on_close(event_info_t *info, event_flags_t flags)
+{
+	network_event_t *nev;
+	message_t *msg;
+
+	nev = info->payload;
+	msg = &nev->message_header;
+lprintf("on_close msg %s type %d\n", opcode_names[be16toh(msg->opcode)], nev->type);
+
+	if (nev->on_close)
+		nev->on_close(info, flags);
 }
 
 static int
@@ -449,6 +464,7 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 
 	res = event_add(fd, EVENT_WRITE | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
 			message_write, nev);
+	res->on_close = message_event_on_close;
 
 	message_write(res, EVENT_WRITE);
 

@@ -111,6 +111,7 @@ typedef struct __network_event {
 	size_t write_idx;
 	void *userdata;
 	size_t userdata_size;
+	event_callback_t on_close;
 } network_event_t;
 
 extern char *peername(struct sockaddr_storage *addr, char *dst);
