@@ -174,8 +174,8 @@ opcode_message_ignore(event_info_t *info)
 	message_t *msg;
 
 	msg = network_message(info);
-	if (opcode_ignore_callbacks[be16toh(msg->opcode)])
-		return (opcode_ignore_callbacks[be16toh(msg->opcode)](info));
+	if (opcode_ignore_callbacks[msg->opcode])
+		return (opcode_ignore_callbacks[msg->opcode](info));
 
 	return (FALSE);
 }
