@@ -88,7 +88,7 @@ main(int argc, char *argv[])
 	int skip_update = 0;
 	int ch, pid, fd;
 
-	while ((ch = getopt(argc, argv, "fhnsS")) != -1) {
+	while ((ch = getopt(argc, argv, "fhnsSc")) != -1) {
 		switch (ch) {
 		case 'f':
 			should_fork = 0;

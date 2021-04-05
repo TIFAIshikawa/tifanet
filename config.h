@@ -35,17 +35,20 @@
 #include <netinet/in.h>
 
 /*
- * Roadmap:
- * 0.1: Base functionality working, send & receive of pact type I
+ * Roadmap
+ * ver: [eta date] description
+ *
+ * 0.9: [etaunknown] Pact type III (Solidity & ERC20) ?
+ * 0.8: [etaunknown] Pact type II (masked pacts)
+ *      [2021-06-01] Go live ???
+ * 0.7: [2021-05-10] Nicify code
+ * 0.6: [2021-05-01] Denounce notar upon block timeout
+ * 0.5: [2021-04-19] Robustify network: fault tolerance, e.g. fix possible
+ *      infinite loops
+ * 0.4: [2021-04-10] Thin client mode: run thin tifanetd with only caches
+ * 0.3: [2021-04-01] Peerlist IPv4 & IPv6
  * 0.2: Connect to both IPv4 & IPv6
- * 0.3: Peerlist IPv4 & IPv6
- * 0.4: Thin client mode: run thin tifanetd with only caches
- * 0.5: Robustify network: fault tolerance, e.g. fix possible infinite loops
- * 0.6: Denounce notar upon block timeout
- * 0.7: Nicify code
- *      Go live
- * 0.8: Pact type II (masked pacts)
- * 0.9: Pact type III (Solidity & ERC20) ?
+ * 0.1: Base functionality working, send & receive of pact type I
  */
 #define TIFA_VERSION_STR	"0.3.0"
 #define TIFA_VERSION	100
