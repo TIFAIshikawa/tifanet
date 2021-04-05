@@ -76,7 +76,7 @@ void op_notar_denounce(event_info_t *info);
 void op_block_announce(event_info_t *info);
 void op_notarproof(event_info_t *info);
 void op_pact(event_info_t *info);
-void op_gettxcache(event_info_t *info);
+void op_getrxcache(event_info_t *info);
 void op_getnotars(event_info_t *info);
 
 int op_block_announce_ignore(event_info_t *info);
@@ -89,8 +89,8 @@ void op_getblock_server(event_info_t *info, network_event_t *nev);
 void op_getblock_client(event_info_t *info, network_event_t *nev);
 void op_pact_server(event_info_t *info, network_event_t *nev);
 void op_pact_client(event_info_t *info, network_event_t *nev);
-void op_gettxcache_server(event_info_t *info, network_event_t *nev);
-void op_gettxcache_client(event_info_t *info, network_event_t *nev);
+void op_getrxcache_server(event_info_t *info, network_event_t *nev);
+void op_getrxcache_client(event_info_t *info, network_event_t *nev);
 void op_getnotars_server(event_info_t *info, network_event_t *nev);
 void op_getnotars_client(event_info_t *info, network_event_t *nev);
 
@@ -103,7 +103,7 @@ opcode_ignore_callback_t opcode_ignore_callbacks[OP_MAXOPCODE] = {
 	NULL,			// OP_NOTAR_DENOUNCE
 	op_block_announce_ignore, // OP_BLOCK_ANNOUNCE
 	NULL,			// OP_PACT
-	NULL,			// OP_GETTXCACHE
+	NULL,			// OP_GETRXCACHE
 	NULL,			// OP_GETNOTARS
 };
 
@@ -116,7 +116,7 @@ opcode_callback_t opcode_callbacks[OP_MAXOPCODE] = {
 	op_notar_denounce,	// OP_NOTAR_DENOUNCE
 	op_block_announce,	// OP_BLOCK_ANNOUNCE
 	op_pact,		// OP_PACT
-	op_gettxcache,		// OP_GETTXCACHE
+	op_getrxcache,		// OP_GETRXCACHE
 	op_getnotars,		// OP_GETNOTARS
 };
 
@@ -152,10 +152,10 @@ opcode_payload_size_valid(message_t *msg, int direction)
 		return (be32toh(msg->payload_size) >= 256 && be32toh(msg->payload_size) < MAXPACKETSIZE);
 	case OP_PACT:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
-			return (be32toh(msg->payload_size) >= sizeof(raw_pact_t) + sizeof(pact_rx_t) + sizeof(pact_tx_t) && be32toh(msg->payload_size) < MAXPACKETSIZE);
+			return (be32toh(msg->payload_size) >= sizeof(raw_pact_t) + sizeof(pact_tx_t) + sizeof(pact_rx_t) && be32toh(msg->payload_size) < MAXPACKETSIZE);
 		else
 			return sizeof(op_pact_response_t);
-	case OP_GETTXCACHE:
+	case OP_GETRXCACHE:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (0);
 		return (be32toh(msg->payload_size) < MAXPACKETSIZE);
@@ -532,7 +532,7 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 	}
 	if (err == NO_ERR)
 		if ((delay = pact_delay(t, 0)) >= 10)
-			err = ERR_TX_FLOOD;
+			err = ERR_RX_FLOOD;
 	if (err == NO_ERR) {
 		tm = time(NULL);
 		t->time = htobe64(tm + delay * 60);
@@ -572,17 +572,17 @@ op_pact_client(event_info_t *info, network_event_t *nev)
 }
 
 void
-op_gettxcache(event_info_t *info)
+op_getrxcache(event_info_t *info)
 {
 	network_event_t *nev;
 	nev = info->payload;
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
-		op_gettxcache_server(info, nev);
+		op_getrxcache_server(info, nev);
 		break;
 	case NETWORK_EVENT_TYPE_CLIENT:
-		op_gettxcache_client(info, nev);
+		op_getrxcache_client(info, nev);
 		break;
 	default:
 		break;
@@ -590,14 +590,14 @@ op_gettxcache(event_info_t *info)
 }
 
 void
-op_gettxcache_server(event_info_t *info, network_event_t *nev)
+op_getrxcache_server(event_info_t *info, network_event_t *nev)
 {
 	char tmp[MAXPATHLEN + 1];
 	message_t *msg;
 	size_t size;
 	FILE *f;
 
-	config_path(tmp, "blocks/txcache.bin");
+	config_path(tmp, "blocks/rxcache.bin");
 	if (!(f = fopen(tmp, "r")))
 		return message_cancel(info);
 
@@ -639,7 +639,7 @@ __cache_write(char *filename, char *buffer, size_t size)
 		w = fwrite(buffer + wr, 1, size - wr, f);
 
 	if (wr != size)
-		FAILTEMP("failed writing txcache: %s", strerror(errno));
+		FAILTEMP("failed writing rxcache: %s", strerror(errno));
 
 	fclose(f);
 
@@ -647,13 +647,13 @@ __cache_write(char *filename, char *buffer, size_t size)
 }
 
 void
-op_gettxcache_client(event_info_t *info, network_event_t *nev)
+op_getrxcache_client(event_info_t *info, network_event_t *nev)
 {
 	message_t *msg;
 
 	msg = network_message(info);
 
-	__cache_write("txcache", nev->userdata, be32toh(msg->payload_size));
+	__cache_write("rxcache", nev->userdata, be32toh(msg->payload_size));
 
 	info->on_close = NULL;
 	message_cancel(info);

@@ -40,7 +40,7 @@
 #  include <sys/endian.h>
 #endif
 #include "network.h"
-#include "txcache.h"
+#include "rxcache.h"
 #include "config.h"
 #include "wallet.h"
 #include "block.h"
@@ -248,40 +248,40 @@ opt_blocks(int argc, char *argv[])
 }
 
 static void
-show_tx_history(raw_block_t *b, pact_tx_t *tx, pact_rx_t *rxb, size_t num_rx)
+show_rx_history(raw_block_t *b, pact_rx_t *rx, pact_tx_t *txb, size_t num_tx)
 {
 	amount_t prev_amount = 0;
 	address_name_t addrname;
 	raw_pact_t *pt;
 	raw_block_t *pb;
-	pact_tx_t *ptx;
-	pact_rx_t *rx;
-	amount_t txa;
+	pact_rx_t *prx;
+	pact_tx_t *tx;
+	amount_t rxa;
 	double a;
 	size_t sz;
 
-	txa = be64toh(tx->amount);
+	rxa = be64toh(rx->amount);
 	printf("  - block_idx: %ju\n", block_idx(b));
 	printf("    from: \n");
-	rx = rxb;
-	for (size_t ri = 0; ri < num_rx; ri++) {
-		pb = block_load(be64toh(rx->block_idx), &sz);
-		pt = pact_for_tx_idx(pb, be32toh(rx->block_tx_idx));
-		ptx = pact_tx_ptr(pt);
-		for (size_t ti = 0; ti < pact_num_tx(pt); ti++) {
-			if (pubkey_compare(tx->address, ptx->address) == 0) {
-				prev_amount += be64toh(ptx->amount);
+	tx = txb;
+	for (size_t ri = 0; ri < num_tx; ri++) {
+		pb = block_load(be64toh(tx->block_idx), &sz);
+		pt = pact_for_rx_idx(pb, be32toh(tx->block_rx_idx));
+		prx = pact_rx_ptr(pt);
+		for (size_t ti = 0; ti < pact_num_rx(pt); ti++) {
+			if (pubkey_compare(rx->address, prx->address) == 0) {
+				prev_amount += be64toh(prx->amount);
 			} else {
 				printf("      - \"%s\"\n",
-					public_key_address_name(ptx->address,
+					public_key_address_name(prx->address,
 						addrname));
 			}
-			ptx = (void *)ptx + sizeof(pact_tx_t);
+			prx = (void *)prx + sizeof(pact_rx_t);
 		}
 	}
-	a = stoi(txa) - stoi(prev_amount);
+	a = stoi(rxa) - stoi(prev_amount);
 
-	printf("    to: \"%s\"\n", public_key_address_name(tx->address,
+	printf("    to: \"%s\"\n", public_key_address_name(rx->address,
 		addrname));
 	printf("    amount: %2.2f\n", a);
 }
@@ -290,14 +290,14 @@ static void
 show_pact_history(raw_block_t *b, raw_pact_t *t,
 	public_key_t *addrs, size_t num_addrs)
 {
-	pact_rx_t *rx = pact_rx_ptr(t);
 	pact_tx_t *tx = pact_tx_ptr(t);
-	for (small_idx_t ti = 0; ti < pact_num_tx(t); ti++) {
+	pact_rx_t *rx = pact_rx_ptr(t);
+	for (small_idx_t ti = 0; ti < pact_num_rx(t); ti++) {
 		for (size_t ai = 0; ai < num_addrs; ai++)
-			if (pubkey_compare(addrs[ai], tx->address) == 0)
-				show_tx_history(b, tx, rx, pact_num_rx(t));
+			if (pubkey_compare(addrs[ai], rx->address) == 0)
+				show_rx_history(b, rx, tx, pact_num_tx(t));
 
-		tx = (void *)tx + sizeof(pact_tx_t);
+		rx = (void *)rx + sizeof(pact_rx_t);
 	}
 }
 
@@ -404,7 +404,7 @@ opt_send(int argc, char *argv[])
 	amount_t balance = 0;
 	address_t **addrs;
 	double amount_src;
-	txcache_t **items;
+	rxcache_t **items;
 	public_key_t dst;
 	pact_t *t;
 	address_t *src;
@@ -460,14 +460,14 @@ opt_send(int argc, char *argv[])
 	}
 
 	t = pact_create();
-	pact_tx_add(t, dst, amount);
+	pact_rx_add(t, dst, amount);
 	if (src) {
-		items = txcaches_for_address(src, &tsize);
+		items = rxcaches_for_address(src, &tsize);
 		for (size_t i = 0; i < tsize; i++)
-			pact_rx_add(t, be64toh(items[i]->block_idx),
-				be32toh(items[i]->block_tx_idx));
+			pact_tx_add(t, be64toh(items[i]->block_idx),
+				be32toh(items[i]->block_rx_idx));
 		if (balance - amount > 0)
-			pact_tx_add(t, address_public_key(src),
+			pact_rx_add(t, address_public_key(src),
 				balance - amount);
 	} else {
 		addrs = wallet_addresses(wallet, &naddrs);
@@ -478,26 +478,26 @@ opt_send(int argc, char *argv[])
 			}
 		}
 		if (src) {
-			items = txcaches_for_address(src, &tsize);
+			items = rxcaches_for_address(src, &tsize);
 			for (size_t i = 0; i < tsize; i++)
-				pact_rx_add(t,
+				pact_tx_add(t,
 					be64toh(items[i]->block_idx),
-					be32toh(items[i]->block_tx_idx));
+					be32toh(items[i]->block_rx_idx));
 		} else {
 			tmp_amount = amount;
 			for (size_t i = 0; i < naddrs && tmp_amount; i++) {
 				a_amount = address_unspent(addrs[i]);
 				if (tmp_amount >= a_amount) {
 					tmp_amount -= a_amount;
-					items = txcaches_for_address(addrs[i],
+					items = rxcaches_for_address(addrs[i],
 						&tsize);
 					for (size_t i = 0; i < tsize; i++)
-						pact_rx_add(t, be64toh(items[i]->block_idx), be32toh(items[i]->block_tx_idx));
+						pact_tx_add(t, be64toh(items[i]->block_idx), be32toh(items[i]->block_rx_idx));
 				} else {
-					items = txcaches_for_address(addrs[i], &tsize);
+					items = rxcaches_for_address(addrs[i], &tsize);
 					for (size_t i = 0; i < tsize; i++)
-						pact_rx_add(t, be64toh(items[i]->block_idx), be32toh(items[i]->block_tx_idx));
-					pact_tx_add(t, address_public_key(addrs[i]), a_amount - tmp_amount);
+						pact_tx_add(t, be64toh(items[i]->block_idx), be32toh(items[i]->block_rx_idx));
+					pact_rx_add(t, address_public_key(addrs[i]), a_amount - tmp_amount);
 					tmp_amount = 0;
 				}
 			}
@@ -549,7 +549,7 @@ opt_resetblocks(int argc, char *argv[])
 	if (argc != 0)
 		return (FALSE);
 
-	// unlink blocks*.bin, txcache.bin and notars.bin
+	// unlink blocks*.bin, rxcache.bin and notars.bin
 	printf("---\nresult: true\n");
 
 	return (TRUE);
@@ -585,7 +585,7 @@ raw_block_t *rb = raw_block_last();
 exit(1);
 */
 	block_last_load();
-	txcache_load();
+	rxcache_load();
 
 	argc -= 2;
 	argv += 2;

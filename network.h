@@ -63,7 +63,7 @@ enum opcodes {
 
 	OP_PACT,			// Publish pact
 
-	OP_GETTXCACHE,			// Request current txcache from notar
+	OP_GETRXCACHE,			// Request current rxcache from notar
 
 	OP_GETNOTARS,			// Request current list of notars
 

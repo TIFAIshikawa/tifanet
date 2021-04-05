@@ -39,7 +39,7 @@
 #include <sys/stat.h>
 #include "peerlist.h"
 #include "network.h"
-#include "txcache.h"
+#include "rxcache.h"
 #include "config.h"
 #include "wallet.h"
 #include "event.h"
@@ -146,11 +146,11 @@ main(int argc, char *argv[])
 	if (!is_caches_only()) {
 		block_last_load();
 		notars_cache_load();
-		txcache_load();
-		if (notars_last_block_idx() != txcache_last_block_idx()) {
-			lprintf("notarscache block idx %ju != txcache block "
+		rxcache_load();
+		if (notars_last_block_idx() != rxcache_last_block_idx()) {
+			lprintf("notarscache block idx %ju != rxcache block "
 				"idx %ju", notars_last_block_idx(),
-				txcache_last_block_idx());
+				rxcache_last_block_idx());
 			exit(EX_TEMPFAIL);
 		}
 	}

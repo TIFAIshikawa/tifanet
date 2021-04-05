@@ -32,7 +32,7 @@
 #include "cache.h"
 #include "config.h"
 #include "keypair.h"
-#include "txcache.h"
+#include "rxcache.h"
 
 #define CACHE_HASH_AMOUNT 2
 
@@ -41,7 +41,7 @@ cache_hash(hash_t resulthash)
 {
 	hash_t hash[CACHE_HASH_AMOUNT];
 
-	txcache_hash(hash[0]);
+	rxcache_hash(hash[0]);
 	notars_cache_hash(hash[1]);
 
 	crypto_generichash(resulthash, sizeof(hash_t),
@@ -52,6 +52,6 @@ cache_hash(hash_t resulthash)
 void
 cache_download(void)
 {
-	message_broadcast(OP_GETTXCACHE, NULL, 0, 0);
+	message_broadcast(OP_GETRXCACHE, NULL, 0, 0);
 	message_broadcast(OP_GETNOTARS, NULL, 0, 0);
 }

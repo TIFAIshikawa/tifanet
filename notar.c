@@ -288,7 +288,7 @@ notars_cache_read(FILE *f)
 
 	__notars = calloc(1, sz);
 	if (fread(__notars, 1, rsize, f) != rsize)
-		FAILTEMP("read_txcache: failed reading cache: %s",
+		FAILTEMP("read_rxcache: failed reading cache: %s",
 			 strerror(errno));
 
 	if (block_idx_last() > __notars_last_block_idx) {
@@ -375,17 +375,17 @@ notar_pending_next(void)
 void
 notars_cache_hash(hash_t result_hash)
 {
-	crypto_generichash_state ctx;
+	crypto_generichash_state crx;
         big_idx_t idx;
         big_idx_t size;
 
         idx = htobe64(block_idx_last());
         size = htobe64(__notars_count);
 
-        crypto_generichash_init(&ctx, NULL, 0, sizeof(hash_t));
-        crypto_generichash_update(&ctx, (void *)&idx, sizeof(big_idx_t));
-        crypto_generichash_update(&ctx, (void *)&size, sizeof(big_idx_t));
-        crypto_generichash_update(&ctx, (void *)__notars,
+        crypto_generichash_init(&crx, NULL, 0, sizeof(hash_t));
+        crypto_generichash_update(&crx, (void *)&idx, sizeof(big_idx_t));
+        crypto_generichash_update(&crx, (void *)&size, sizeof(big_idx_t));
+        crypto_generichash_update(&crx, (void *)__notars,
                                   sizeof(public_key_t) * __notars_count);
-        crypto_generichash_final(&ctx, result_hash, sizeof(hash_t));
+        crypto_generichash_final(&crx, result_hash, sizeof(hash_t));
 }

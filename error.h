@@ -46,10 +46,10 @@ enum {
 	ERR_MSG_TOOBIG		= 3,	/* Message too big */
 	ERR_MALFORMED		= 4,	/* Malformed content */
 
-	ERR_TX_PENDING		= 5,	/* TX already in pending pact */
-	ERR_TX_SPENT		= 6,	/* TX already spent */
-	ERR_TX_UNCOMPRESSED	= 7,	/* TX entries not compressed */
-	ERR_TX_FLOOD		= 8,	/* Too many subsequent pacts */
+	ERR_RX_PENDING		= 5,	/* RX already in pending pact */
+	ERR_RX_SPENT		= 6,	/* RX already spent */
+	ERR_RX_UNCOMPRESSED	= 7,	/* RX entries not compressed */
+	ERR_RX_FLOOD		= 8,	/* Too many subsequent pacts */
 	ERR_BADBALANCE		= 9,	/* Pact balance incorrect */
 
 	ERR_BLK_EARLY		= 10,	/* Block too early */

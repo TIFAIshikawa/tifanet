@@ -45,7 +45,7 @@
 #include "error.h"
 #include "config.h"
 #include "wallet.h"
-#include "txcache.h"
+#include "rxcache.h"
 #include "pact.h"
 
 static raw_pact_t **__pending_pacts;
@@ -62,10 +62,10 @@ pact_alloc(void)
 #endif
 
 	res->time = time(NULL);
-	res->flags = PACT_TYPE_RX_TX | PACT_VERSION_1;
-	res->num_rx = res->num_tx = 0;
-	res->rx = malloc(sizeof(pact_rx_t *) * 10);
+	res->flags = PACT_TYPE_RTX | PACT_VERSION_1;
+	res->num_tx = res->num_rx = 0;
 	res->tx = malloc(sizeof(pact_tx_t *) * 10);
+	res->rx = malloc(sizeof(pact_rx_t *) * 10);
 
 	return (res);
 }
@@ -77,38 +77,38 @@ pact_create(void)
 }
 
 int
-pact_rx_add(pact_t *pact, big_idx_t block_idx, small_idx_t tx_idx)
-{
-	pact_rx_t *rx;
-
-	// check validity of block & tx idx
-
-	if (pact->num_rx % 10 == 0)
-		pact->rx = realloc(pact->rx,
-			sizeof(pact_rx_t *) * pact->num_rx + 10);
-	rx = malloc(sizeof(pact_rx_t));
-	rx->block_idx = block_idx;
-	rx->block_tx_idx = tx_idx;
-	bzero(rx->signature, sizeof(signature_t));
-	pact->rx[pact->num_rx] = rx;
-	pact->num_rx += 1;
-
-	return (1);
-}
-
-void
-pact_tx_add(pact_t *pact, public_key_t tx_public_key, amount_t amount)
+pact_tx_add(pact_t *pact, big_idx_t block_idx, small_idx_t rx_idx)
 {
 	pact_tx_t *tx;
+
+	// check validity of block & rx idx
 
 	if (pact->num_tx % 10 == 0)
 		pact->tx = realloc(pact->tx,
 			sizeof(pact_tx_t *) * pact->num_tx + 10);
 	tx = malloc(sizeof(pact_tx_t));
-	bcopy(tx_public_key, tx->address, sizeof(public_key_t));
-	tx->amount = amount;
+	tx->block_idx = block_idx;
+	tx->block_rx_idx = rx_idx;
+	bzero(tx->signature, sizeof(signature_t));
 	pact->tx[pact->num_tx] = tx;
 	pact->num_tx += 1;
+
+	return (1);
+}
+
+void
+pact_rx_add(pact_t *pact, public_key_t rx_public_key, amount_t amount)
+{
+	pact_rx_t *rx;
+
+	if (pact->num_rx % 10 == 0)
+		pact->rx = realloc(pact->rx,
+			sizeof(pact_rx_t *) * pact->num_rx + 10);
+	rx = malloc(sizeof(pact_rx_t));
+	bcopy(rx_public_key, rx->address, sizeof(public_key_t));
+	rx->amount = amount;
+	pact->rx[pact->num_rx] = rx;
+	pact->num_rx += 1;
 }
 
 void
@@ -116,55 +116,55 @@ pact_finalize(pact_t *pact)
 {
 	size_t sz;
 	big_idx_t idx;
-	pact_rx_t *rx;
 	pact_tx_t *tx;
+	pact_rx_t *rx;
 	raw_block_t *b;
 	address_t *addr;
-	small_idx_t txidx;
+	small_idx_t rxidx;
 	keypair_t *addr_kp;
 	address_name_t addr_name;
 	public_key_t *addr_pubkey;
 
-	for (small_idx_t i = 0; i < pact->num_tx; i++) {
-		tx = pact->tx[i];
-		tx->amount = htobe64(tx->amount);
+	for (small_idx_t i = 0; i < pact->num_rx; i++) {
+		rx = pact->rx[i];
+		rx->amount = htobe64(rx->amount);
 	}
-	for (small_idx_t ri = 0; ri < pact->num_rx; ri++) {
-		rx = pact->rx[ri];
-		if (!(b = block_load(rx->block_idx, &sz)))
+	for (small_idx_t ri = 0; ri < pact->num_tx; ri++) {
+		tx = pact->tx[ri];
+		if (!(b = block_load(tx->block_idx, &sz)))
 			FAIL(EX_SOFTWARE, "finalize_pact: "
-			     "block not found: %ld\n", rx->block_idx);
-		if (!(addr_pubkey = (void *)public_key_find_by_tx_idx(b, rx->block_tx_idx)))
+			     "block not found: %ld\n", tx->block_idx);
+		if (!(addr_pubkey = (void *)public_key_find_by_rx_idx(b, tx->block_rx_idx)))
 			FAIL(EX_SOFTWARE, "finalize_pact: block %ld: "
-			     "tx_idx not found: %d\n",
-			     rx->block_idx, rx->block_tx_idx);
+			     "rx_idx not found: %d\n",
+			     tx->block_idx, tx->block_rx_idx);
 		if (!(addr = address_find_by_public_key(*addr_pubkey)))
 			FAIL(EX_SOFTWARE, "finalize_pact: address "
 			     "not found for public key: %s\n",
 			     public_key_address_name(*addr_pubkey, addr_name));
 		addr_kp = address_keypair(addr);
 
-		idx = be64toh(rx->block_idx);
-		txidx = be32toh(rx->block_tx_idx);
+		idx = be64toh(tx->block_idx);
+		rxidx = be32toh(tx->block_rx_idx);
 		keypair_sign_start(addr_kp, NULL, 0);
 		keypair_sign_update(addr_kp, &idx, sizeof(big_idx_t));
-		keypair_sign_update(addr_kp, &txidx, sizeof(small_idx_t));
-		for (small_idx_t ti = 0; ti < pact->num_tx; ti++) {
-			tx = pact->tx[ti];
-			keypair_sign_update(addr_kp, tx, sizeof(pact_tx_t));
+		keypair_sign_update(addr_kp, &rxidx, sizeof(small_idx_t));
+		for (small_idx_t ti = 0; ti < pact->num_rx; ti++) {
+			rx = pact->rx[ti];
+			keypair_sign_update(addr_kp, rx, sizeof(pact_rx_t));
 		}
-		keypair_sign_finalize(addr_kp, rx->signature);
+		keypair_sign_finalize(addr_kp, tx->signature);
 	}
-	for (small_idx_t i = 0; i < pact->num_rx; i++) {
-		rx = pact->rx[i];
-		rx->block_idx = htobe64(rx->block_idx);
-		rx->block_tx_idx = htobe32(rx->block_tx_idx);
+	for (small_idx_t i = 0; i < pact->num_tx; i++) {
+		tx = pact->tx[i];
+		tx->block_idx = htobe64(tx->block_idx);
+		tx->block_rx_idx = htobe32(tx->block_rx_idx);
 	}
 
 	pact->time = htobe64(pact->time);
 	pact->flags = htobe64(pact->flags);
-	pact->num_rx = htobe32(pact->num_rx);
 	pact->num_tx = htobe32(pact->num_tx);
+	pact->num_rx = htobe32(pact->num_rx);
 }
 
 static raw_pact_t *
@@ -173,8 +173,8 @@ raw_pact_alloc(pact_t *t, size_t *size)
 	raw_pact_t *res;
 
 	*size = sizeof(raw_pact_t) +
-		sizeof(pact_rx_t) * be32toh(t->num_rx) +
-		sizeof(pact_tx_t) * be32toh(t->num_tx);
+		sizeof(pact_tx_t) * be32toh(t->num_tx) +
+		sizeof(pact_rx_t) * be32toh(t->num_rx);
 	res = malloc(*size);
 #ifdef DEBUG_ALLOC
 	printf("+RAWPACT %p\n", res);
@@ -205,13 +205,13 @@ raw_pact_create(pact_t *t, size_t *size)
 
 	bcopy(t, buf, sizeof(raw_pact_t));
 	buf += sizeof(raw_pact_t);
-	for (small_idx_t ri = 0; ri < be32toh(t->num_rx); ri++) {
-		bcopy(t->rx[ri], buf, sizeof(pact_rx_t));
-		buf += sizeof(pact_rx_t);
-	}
-	for (small_idx_t ti = 0; ti < be32toh(t->num_tx); ti++) {
-		bcopy(t->tx[ti], buf, sizeof(pact_tx_t));
+	for (small_idx_t ri = 0; ri < be32toh(t->num_tx); ri++) {
+		bcopy(t->tx[ri], buf, sizeof(pact_tx_t));
 		buf += sizeof(pact_tx_t);
+	}
+	for (small_idx_t ti = 0; ti < be32toh(t->num_rx); ti++) {
+		bcopy(t->rx[ti], buf, sizeof(pact_rx_t));
+		buf += sizeof(pact_rx_t);
 	}
 
 	return (res);
@@ -220,12 +220,12 @@ raw_pact_create(pact_t *t, size_t *size)
 void
 pact_free(pact_t *pact)
 {
-	for (small_idx_t i = 0; i < be32toh(pact->num_rx); i++)
-		free(pact->rx[i]);
 	for (small_idx_t i = 0; i < be32toh(pact->num_tx); i++)
 		free(pact->tx[i]);
-	free(pact->rx);
+	for (small_idx_t i = 0; i < be32toh(pact->num_rx); i++)
+		free(pact->rx[i]);
 	free(pact->tx);
+	free(pact->rx);
 	free(pact);
 #ifdef DEBUG_ALLOC
 	printf("-PACT %p\n", pact);
@@ -233,26 +233,26 @@ pact_free(pact_t *pact)
 }
 
 static int
-pact_rx_pending(raw_pact_t *t)
+pact_tx_pending(raw_pact_t *t)
 {
 	raw_pact_t *pt;
-	pact_rx_t *trx, *ptrx;
+	pact_tx_t *ttx, *pttx;
 
 	for (small_idx_t i = 0; i < __pending_pacts_size; i++) {
 		if (!(pt = __pending_pacts[i]))
 			continue;
 
-		trx = (void *)t + sizeof(raw_pact_t);
-		for (small_idx_t nrx = 0; nrx < be32toh(t->num_rx); nrx++) {
-			ptrx = (void *)pt + sizeof(raw_pact_t);
-			for (small_idx_t prx = 0; prx < be32toh(pt->num_rx); prx++) {
-				if (trx->block_idx == ptrx->block_idx &&
-				    trx->block_tx_idx == ptrx->block_tx_idx)
+		ttx = (void *)t + sizeof(raw_pact_t);
+		for (small_idx_t ntx = 0; ntx < be32toh(t->num_tx); ntx++) {
+			pttx = (void *)pt + sizeof(raw_pact_t);
+			for (small_idx_t ptx = 0; ptx < be32toh(pt->num_tx); ptx++) {
+				if (ttx->block_idx == pttx->block_idx &&
+				    ttx->block_rx_idx == pttx->block_rx_idx)
 					return (TRUE);
 
-				ptrx = (void *)ptrx + sizeof(pact_rx_t);
+				pttx = (void *)pttx + sizeof(pact_tx_t);
 			}
-			trx = (void *)trx + sizeof(pact_rx_t);
+			ttx = (void *)ttx + sizeof(pact_tx_t);
 		}
 	}
 
@@ -269,8 +269,8 @@ pact_pending_add(raw_pact_t *pact)
 		__pending_pacts = calloc(1, sizeof(raw_pact_t) * __pending_pacts_size);
 	}
 
-	if (pact_rx_pending(pact))
-		return (ERR_TX_PENDING);
+	if (pact_tx_pending(pact))
+		return (ERR_RX_PENDING);
 
 	for (i = 0; i < __pending_pacts_size; i++)
 		if (!__pending_pacts[i])
@@ -294,24 +294,24 @@ void
 pact_pending_remove(raw_pact_t *t)
 {
 	raw_pact_t *pt;
-	pact_rx_t *trx, *prx;
+	pact_tx_t *ttx, *ptx;
 
 	for (small_idx_t i = 0; i < __pending_pacts_size; i++) {
 		if (!(pt = __pending_pacts[i]))
 			continue;
 
-		trx = (void *)t + sizeof(raw_pact_t);
-		for (small_idx_t tri = 0; tri < be32toh(t->num_rx); tri++) {
-			prx = (void *)pt + sizeof(raw_pact_t);
-			for (small_idx_t pri = 0; pri < be32toh(pt->num_rx); pri++) {
-				if (trx->block_idx == prx->block_idx &&
-				    trx->block_tx_idx == prx->block_tx_idx) {
+		ttx = (void *)t + sizeof(raw_pact_t);
+		for (small_idx_t tri = 0; tri < be32toh(t->num_tx); tri++) {
+			ptx = (void *)pt + sizeof(raw_pact_t);
+			for (small_idx_t pri = 0; pri < be32toh(pt->num_tx); pri++) {
+				if (ttx->block_idx == ptx->block_idx &&
+				    ttx->block_rx_idx == ptx->block_rx_idx) {
 					__pending_pacts[i] = NULL;
 					continue;
 				}
-				prx = (void *)prx + sizeof(pact_rx_t);
+				ptx = (void *)ptx + sizeof(pact_tx_t);
 			}
-			trx = (void *)trx + sizeof(pact_rx_t);
+			ttx = (void *)ttx + sizeof(pact_tx_t);
 		}
 	}
 }
@@ -350,37 +350,37 @@ pacts_pending(small_idx_t *size)
 static int
 raw_pact_balance(raw_pact_t *pact, amount_t *rcv, amount_t *snd)
 {
-	txcache_t *cache;
-	size_t txsize;
-	pact_rx_t *rx;
+	rxcache_t *cache;
+	size_t rxsize;
 	pact_tx_t *tx;
-	void *ctx;
+	pact_rx_t *rx;
+	void *crx;
 
 	*rcv = *snd = 0;
-	rx = pact_rx_ptr(pact);
 	tx = pact_tx_ptr(pact);
-	txsize = pact_tx_size(pact);
-	for (small_idx_t ri = 0; ri < pact_num_rx(pact); ri++) {
-		if (!(cache = txcache_for_idxs(rx->block_idx,
-			rx->block_tx_idx)))
-			return (ERR_TX_SPENT);
+	rx = pact_rx_ptr(pact);
+	rxsize = pact_rx_size(pact);
+	for (small_idx_t ri = 0; ri < pact_num_tx(pact); ri++) {
+		if (!(cache = rxcache_for_idxs(tx->block_idx,
+			tx->block_rx_idx)))
+			return (ERR_RX_SPENT);
 
-		ctx = keypair_verify_start(NULL, 0);
-		keypair_verify_update(ctx, &rx->block_idx, sizeof(big_idx_t));
-		keypair_verify_update(ctx, &rx->block_tx_idx,
+		crx = keypair_verify_start(NULL, 0);
+		keypair_verify_update(crx, &tx->block_idx, sizeof(big_idx_t));
+		keypair_verify_update(crx, &tx->block_rx_idx,
 			sizeof(small_idx_t));
-		keypair_verify_update(ctx, tx, txsize);
-		if (!keypair_verify_finalize(ctx, cache->tx.address,
-			rx->signature))
+		keypair_verify_update(crx, rx, rxsize);
+		if (!keypair_verify_finalize(crx, cache->rx.address,
+			tx->signature))
 			return (ERR_BADSIG);
 
-		*snd += be64toh(cache->tx.amount);
+		*snd += be64toh(cache->rx.amount);
 
-		rx = (void *)rx + sizeof(pact_rx_t);
-	}
-	for (small_idx_t ti = 0; ti < pact_num_tx(pact); ti++) {
-		*rcv += be64toh(tx->amount);
 		tx = (void *)tx + sizeof(pact_tx_t);
+	}
+	for (small_idx_t ti = 0; ti < pact_num_rx(pact); ti++) {
+		*rcv += be64toh(rx->amount);
+		rx = (void *)rx + sizeof(pact_rx_t);
 	}
 
 	return (NO_ERR);
@@ -413,15 +413,15 @@ raw_pact_validate(raw_pact_t *pact)
 void *
 pact_hash(raw_pact_t *t, void *hash)
 {
-	crypto_generichash_state ctx;
+	crypto_generichash_state crx;
 	size_t size, offset;
 
 	size = pact_size(t) - sizeof(small_hash_t);
 
 	offset = sizeof(time64_t);
-	crypto_generichash_init(&ctx, NULL, 0, sizeof(small_hash_t));
-	crypto_generichash_update(&ctx, (void *)t + offset, size);
-	crypto_generichash_final(&ctx, hash, sizeof(small_hash_t));
+	crypto_generichash_init(&crx, NULL, 0, sizeof(small_hash_t));
+	crypto_generichash_update(&crx, (void *)t + offset, size);
+	crypto_generichash_final(&crx, hash, sizeof(small_hash_t));
 
 	return (hash);
 }
@@ -431,7 +431,7 @@ pact_delay(raw_pact_t *rt, int nesting)
 {
 	raw_pact_t *nrt;
 	raw_block_t *b;
-	pact_rx_t *rx;
+	pact_tx_t *tx;
 	big_idx_t lbi;
 	big_idx_t idx;
 	int delay = 0;
@@ -442,19 +442,19 @@ pact_delay(raw_pact_t *rt, int nesting)
 		return (0);
 
 	lbi = block_idx_last();
-	rx = (void *)rt + sizeof(raw_pact_t);
-	for (small_idx_t i = 0; i < be32toh(rt->num_rx); i++) {
-		idx = be64toh(rx->block_idx);
+	tx = (void *)rt + sizeof(raw_pact_t);
+	for (small_idx_t i = 0; i < be32toh(rt->num_tx); i++) {
+		idx = be64toh(tx->block_idx);
 		if (lbi - idx < 10 + nesting * 2) {
 			delay = 10 - (lbi - idx);
 			res = MAX(res, delay);
 
-			b = block_load(be64toh(rx->block_idx), &bs);
-			nrt = pact_for_tx_idx(b, be32toh(rx->block_tx_idx));
+			b = block_load(be64toh(tx->block_idx), &bs);
+			nrt = pact_for_rx_idx(b, be32toh(tx->block_rx_idx));
 			res += pact_delay(nrt, nesting + 1);
 		}
 
-		rx = (void *)rx + sizeof(pact_rx_t);
+		tx = (void *)tx + sizeof(pact_tx_t);
 	}
 
 	return (res / 5);
@@ -463,19 +463,19 @@ pact_delay(raw_pact_t *rt, int nesting)
 int
 pacts_overlap(raw_pact_t *t1, raw_pact_t *t2)
 {
-	pact_rx_t *rx1, *rx2;
+	pact_tx_t *tx1, *tx2;
 
-	rx1 = pact_rx_ptr(t1);
-	for (small_idx_t ri1 = 0; ri1 < pact_num_rx(t1); ri1++) {
-		rx2 = pact_rx_ptr(t2);
-		for (small_idx_t ri2 = 0; ri2 < pact_num_rx(t2); ri2++) {
-			if (rx1->block_idx == rx2->block_idx &&
-			    rx1->block_tx_idx == rx2->block_tx_idx)
+	tx1 = pact_tx_ptr(t1);
+	for (small_idx_t ri1 = 0; ri1 < pact_num_tx(t1); ri1++) {
+		tx2 = pact_tx_ptr(t2);
+		for (small_idx_t ri2 = 0; ri2 < pact_num_tx(t2); ri2++) {
+			if (tx1->block_idx == tx2->block_idx &&
+			    tx1->block_rx_idx == tx2->block_rx_idx)
 				return (TRUE);
 
-			rx2 = (void *)rx2 + sizeof(pact_rx_t);
+			tx2 = (void *)tx2 + sizeof(pact_tx_t);
 		}
-		rx1 = (void *)rx1 + sizeof(pact_rx_t);
+		tx1 = (void *)tx1 + sizeof(pact_tx_t);
 	}
 
 	return (FALSE);

@@ -38,44 +38,43 @@
 #include "config.h"
 #include "keypair.h"
 
-typedef struct __attribute__((__packed__)) __pact_rx {
-	big_idx_t block_idx;
-	small_idx_t block_tx_idx;
-	signature_t signature; // over this rx and all tx records
-} pact_rx_t;
-
 typedef struct __attribute__((__packed__)) __pact_tx {
-	public_key_t address;
-	amount_t amount;
+	big_idx_t block_idx;
+	small_idx_t block_rx_idx;
+	signature_t signature; // over this tx and all rx records
 } pact_tx_t;
 
+typedef struct __attribute__((__packed__)) __pact_rx {
+	public_key_t address;
+	amount_t amount;
+} pact_rx_t;
+
 enum pact_flags {
-	PACT_TYPE_RX_TX	= (1LL << 0),
-	PACT_VERSION_1	= (1LL << 32),
-//	PACT_VERSION_2	= (2LL << 32),
+	PACT_TYPE_RTX	= (1LL << 0),
+	PACT_VERSION_1	= (1LL << 32)
 };
 
 typedef struct __attribute__((__packed__)) __raw_pact {
 	time64_t time;
 	flags_t flags;
-	small_idx_t num_rx;
 	small_idx_t num_tx;
-	// rx & tx after here...
+	small_idx_t num_rx;
+	// tx & rx after here...
 } raw_pact_t;
 
 typedef struct __attribute__((__packed__)) __pact {
 	time64_t time;
 	flags_t flags;
-	small_idx_t num_rx;
 	small_idx_t num_tx;
-	pact_rx_t **rx;
+	small_idx_t num_rx;
 	pact_tx_t **tx;
+	pact_rx_t **rx;
 } pact_t;
 
 extern pact_t *pact_create(void);
 
-extern int pact_rx_add(pact_t *pact, big_idx_t block_idx, small_idx_t tx_idx);
-extern void pact_tx_add(pact_t *pact, public_key_t tx_public_key, amount_t amount);
+extern int pact_tx_add(pact_t *pact, big_idx_t block_idx, small_idx_t rx_idx);
+extern void pact_rx_add(pact_t *pact, public_key_t rx_public_key, amount_t amount);
 extern void pact_finalize(pact_t *pact);
 
 extern raw_pact_t *raw_pact_create(pact_t *pact, size_t *size);
@@ -99,21 +98,15 @@ extern int pact_delay(raw_pact_t *rt, int nesting);
 extern int pacts_overlap(raw_pact_t *t1, raw_pact_t *t2);
 
 inline static small_idx_t
-pact_num_rx(raw_pact_t *raw_pact)
-{
-	return (be32toh(raw_pact->num_rx));
-}
-
-inline static small_idx_t
 pact_num_tx(raw_pact_t *raw_pact)
 {
 	return (be32toh(raw_pact->num_tx));
 }
 
-inline static size_t
-pact_rx_size(raw_pact_t *raw_pact)
+inline static small_idx_t
+pact_num_rx(raw_pact_t *raw_pact)
 {
-	return (pact_num_rx(raw_pact) * sizeof(pact_rx_t));
+	return (be32toh(raw_pact->num_rx));
 }
 
 inline static size_t
@@ -122,23 +115,29 @@ pact_tx_size(raw_pact_t *raw_pact)
 	return (pact_num_tx(raw_pact) * sizeof(pact_tx_t));
 }
 
-inline static pact_rx_t *
-pact_rx_ptr(raw_pact_t *raw_pact)
+inline static size_t
+pact_rx_size(raw_pact_t *raw_pact)
 {
-	return ((void *)raw_pact + sizeof(raw_pact_t));
+	return (pact_num_rx(raw_pact) * sizeof(pact_rx_t));
 }
 
 inline static pact_tx_t *
 pact_tx_ptr(raw_pact_t *raw_pact)
 {
-	return ((void *)pact_rx_ptr(raw_pact) + pact_rx_size(raw_pact));
+	return ((void *)raw_pact + sizeof(raw_pact_t));
+}
+
+inline static pact_rx_t *
+pact_rx_ptr(raw_pact_t *raw_pact)
+{
+	return ((void *)pact_tx_ptr(raw_pact) + pact_tx_size(raw_pact));
 }
 
 inline static size_t
 pact_size(raw_pact_t *raw_pact)
 {
-	return (sizeof(raw_pact_t) + pact_rx_size(raw_pact) +
-		pact_tx_size(raw_pact));
+	return (sizeof(raw_pact_t) + pact_tx_size(raw_pact) +
+		pact_rx_size(raw_pact));
 }
 
 #endif /* __TIFA_PACT_H */

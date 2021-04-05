@@ -52,7 +52,7 @@
 #include "config.h"
 #include "wallet.h"
 #include "network.h"
-#include "txcache.h"
+#include "rxcache.h"
 #include "pact.h"
 
 // 3 mmap'ed files
@@ -162,19 +162,19 @@ raw_block_hash(raw_block_t *block, size_t size, hash_t result)
 }
 
 static int
-cache_in_pacts(txcache_t *cache, pact_t **pacts,
+cache_in_pacts(rxcache_t *cache, pact_t **pacts,
 	small_idx_t tsize)
 {
 	pact_t *t;
-	pact_rx_t *rx;
+	pact_tx_t *tx;
 
 	for (small_idx_t i = 0; i < tsize; i++) {
 		if (!(t = pacts[i]))
 			continue;
-		for (small_idx_t ri = 0; ri < t->num_rx; ri++) {
-			rx = t->rx[ri];
-			if (be64toh(cache->block_idx) == rx->block_idx &&
-			    be32toh(cache->block_tx_idx) == rx->block_tx_idx)
+		for (small_idx_t ri = 0; ri < t->num_tx; ri++) {
+			tx = t->tx[ri];
+			if (be64toh(cache->block_idx) == tx->block_idx &&
+			    be32toh(cache->block_rx_idx) == tx->block_rx_idx)
 				return (TRUE);
 		}
 	}
@@ -183,20 +183,20 @@ cache_in_pacts(txcache_t *cache, pact_t **pacts,
 }
 
 static int
-cache_in_raw_pacts(txcache_t *cache, raw_pact_t **pacts,
+cache_in_raw_pacts(rxcache_t *cache, raw_pact_t **pacts,
 	small_idx_t tsize)
 {
 	raw_pact_t *t;
-	pact_rx_t *rx;
+	pact_tx_t *tx;
 
 	for (small_idx_t i = 0; i < tsize; i++) {
 		t = pacts[i];
-		rx = (void *)t + sizeof(raw_pact_t);
-		for (small_idx_t ri = 0; ri < be32toh(t->num_rx); ri++) {
-			if (cache->block_idx == rx->block_idx &&
-			    cache->block_tx_idx == rx->block_tx_idx)
+		tx = (void *)t + sizeof(raw_pact_t);
+		for (small_idx_t ri = 0; ri < be32toh(t->num_tx); ri++) {
+			if (cache->block_idx == tx->block_idx &&
+			    cache->block_rx_idx == tx->block_rx_idx)
 				return (TRUE);
-			rx = (void *)rx + sizeof(pact_rx_t);
+			tx = (void *)tx + sizeof(pact_tx_t);
 		}
 	}
 
@@ -215,7 +215,7 @@ add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt)
 	size_t tsize;
 	wallet_t *wallet;
 	pact_t *t;
-	txcache_t **caches;
+	rxcache_t **caches;
 	size_t num_addresses;
 	address_t **addresses;
 	public_key_t *feeaddress;
@@ -235,22 +235,22 @@ add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt)
 
 	t = pact_create();
 
-	if ((caches = txcaches_for_address(addresses[0], &tsize))) {
+	if ((caches = rxcaches_for_address(addresses[0], &tsize))) {
 		for (size_t i = 0; i < tsize; i++) {
 			if (!cache_in_pacts(caches[i],
 			    block->pacts, block->num_pacts) &&
 			    !cache_in_raw_pacts(caches[i], rt, nrt)) {
-				pact_rx_add(t,
+				pact_tx_add(t,
 					be64toh(caches[i]->block_idx),
-					be32toh(caches[i]->block_tx_idx));
-				amount += be64toh(caches[i]->tx.amount);
+					be32toh(caches[i]->block_rx_idx));
+				amount += be64toh(caches[i]->rx.amount);
 			}
 		}
 
 		free(caches);
 	}
 
-	pact_tx_add(t, (void *)feeaddress, amount);
+	pact_rx_add(t, (void *)feeaddress, amount);
 	block->pacts[0] = t;
 }
 
@@ -381,7 +381,7 @@ int
 raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 {
 	int err;
-	void *ctx;
+	void *crx;
 	hash_t pbh;
 	big_idx_t idx;
 	signature_t sig;
@@ -390,7 +390,7 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 
 	// check block size
 	if (blocksize < sizeof(raw_block_t) + sizeof(raw_pact_t) +
-		sizeof(pact_tx_t)) {
+		sizeof(pact_rx_t)) {
 		lprintf("block with index %ju smaller than block skeleton: %d",
 			block_idx(raw_block), blocksize);
 		return (FALSE);
@@ -442,8 +442,8 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	// check signature
 	bcopy(raw_block->signature, sig, sizeof(signature_t));
 	bzero(raw_block->signature, sizeof(signature_t));
-	ctx = keypair_verify_start(raw_block, blocksize);
-	if (!keypair_verify_finalize(ctx, raw_block->notar, sig)) {
+	crx = keypair_verify_start(raw_block, blocksize);
+	if (!keypair_verify_finalize(crx, raw_block->notar, sig)) {
 		lprintf("block has incorrect signature, index %ju",
 			block_idx(raw_block));
 		return (FALSE);
@@ -463,13 +463,13 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 			err = raw_pact_validate(t);
 		switch (err) {
 		case 0: break;
-		case ERR_TX_SPENT:
+		case ERR_RX_SPENT:
 			lprintf("processing block %ju, pact %u: "
-        			"tx unknown or already spent", idx, ti);
+        			"rx unknown or already spent", idx, ti);
 			return (FALSE);
 		case ERR_BADSIG:
 			lprintf("processing block %ju, pact %u: "
-        			"bad signature in rx", idx, ti);
+        			"bad signature in tx", idx, ti);
 			return (FALSE);
 		case ERR_BADBALANCE:
 			lprintf("processing block %ju, pact %u: "
@@ -490,7 +490,7 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 		}
 		if (scount > 1) {
 			lprintf("processing block %ju, pact %u: "
-        			"rx overlap %d times", idx, ti, scount);
+        			"tx overlap %d times", idx, ti, scount);
 			return (FALSE);
 		}
 
@@ -508,7 +508,7 @@ raw_block_process(raw_block_t *raw_block, size_t blocksize)
 	size_t size;
 
 	if (pubkey_compare(node_public_key(), raw_block->notar) != 0) {
-		txcache_raw_block_add(raw_block);
+		rxcache_raw_block_add(raw_block);
 		notar_raw_block_add(raw_block);
 	}
 
@@ -572,8 +572,8 @@ block_finalize(block_t *block, size_t *blocksize)
 	for (small_idx_t ti = 0; ti < block->num_pacts; ti++) {
 		t = block->pacts[ti];
 		size = sizeof(raw_pact_t);
-		size += t->num_rx * sizeof(pact_rx_t);
 		size += t->num_tx * sizeof(pact_tx_t);
+		size += t->num_rx * sizeof(pact_rx_t);
 		if (bs + size > MAXPACKETSIZE)
 			break;
 		bs += size;
@@ -583,8 +583,8 @@ block_finalize(block_t *block, size_t *blocksize)
 		rt = rtl[ti];
 //		if (be64toh(rt->time) < tm) {
 			size = sizeof(raw_pact_t);
-			size += be32toh(rt->num_rx) * sizeof(pact_rx_t);
 			size += be32toh(rt->num_tx) * sizeof(pact_tx_t);
+			size += be32toh(rt->num_rx) * sizeof(pact_rx_t);
 			if (bs + size > MAXPACKETSIZE)
 				break;
 			bs += size;
@@ -610,13 +610,13 @@ block_finalize(block_t *block, size_t *blocksize)
 		pact_finalize(t);
 		bcopy(t, curbuf, sizeof(raw_pact_t));
 		curbuf += sizeof(raw_pact_t);
-		for (small_idx_t ri = 0; ri < be32toh(t->num_rx); ri++) {
-			bcopy(t->rx[ri], curbuf, sizeof(pact_rx_t));
-			curbuf += sizeof(pact_rx_t);
-		}
-		for (small_idx_t ti = 0; ti < be32toh(t->num_tx); ti++) {
-			bcopy(t->tx[ti], curbuf, sizeof(pact_tx_t));
+		for (small_idx_t ri = 0; ri < be32toh(t->num_tx); ri++) {
+			bcopy(t->tx[ri], curbuf, sizeof(pact_tx_t));
 			curbuf += sizeof(pact_tx_t);
+		}
+		for (small_idx_t ti = 0; ti < be32toh(t->num_rx); ti++) {
+			bcopy(t->rx[ti], curbuf, sizeof(pact_rx_t));
+			curbuf += sizeof(pact_rx_t);
 		}
 	}
 
@@ -624,14 +624,14 @@ block_finalize(block_t *block, size_t *blocksize)
 		rt = rtl[ti];
 //		if (be64toh(rt->time) < tm) {
 			size = sizeof(raw_pact_t);
-			size += be32toh(rt->num_rx) * sizeof(pact_rx_t) +
-				be32toh(rt->num_tx) * sizeof(pact_tx_t);
+			size += be32toh(rt->num_tx) * sizeof(pact_tx_t) +
+				be32toh(rt->num_rx) * sizeof(pact_rx_t);
 			bcopy(rt, curbuf, size);
 			curbuf += size;
 //		}
 	}
 
-	txcache_raw_block_add(res);
+	rxcache_raw_block_add(res);
 	notar_raw_block_add(res);
 
 	cache_hash(res->cache_hash);
@@ -646,42 +646,42 @@ block_finalize(block_t *block, size_t *blocksize)
 }
 
 uint8_t *
-public_key_find_by_tx_idx(raw_block_t *block, small_idx_t tx_idx)
+public_key_find_by_rx_idx(raw_block_t *block, small_idx_t rx_idx)
 {
 	void *buf;
 	raw_pact_t *t;
-	small_idx_t ntx = 0;
+	small_idx_t nrx = 0;
 
 	buf = raw_block_pacts(block);
 	for (small_idx_t ti = 0; ti < num_pacts(block); ti++) {
 		t = (void *)buf;
 		buf += sizeof(raw_pact_t);
-		buf += sizeof(pact_rx_t) * be32toh(t->num_rx);
-		if (ntx + pact_num_tx(t) <= tx_idx) {
-			ntx += pact_num_tx(t);
-			buf += sizeof(pact_tx_t) * pact_num_tx(t);
+		buf += sizeof(pact_tx_t) * be32toh(t->num_tx);
+		if (nrx + pact_num_rx(t) <= rx_idx) {
+			nrx += pact_num_rx(t);
+			buf += sizeof(pact_rx_t) * pact_num_rx(t);
 			continue;
 		}
-		buf += sizeof(pact_tx_t) * (tx_idx - ntx);
+		buf += sizeof(pact_rx_t) * (rx_idx - nrx);
 
-		return ((pact_tx_t *)buf)->address;
+		return ((pact_rx_t *)buf)->address;
 	}
 
 	return (NULL);
 }
 
 raw_pact_t *
-pact_for_tx_idx(raw_block_t *block, small_idx_t tx_idx)
+pact_for_rx_idx(raw_block_t *block, small_idx_t rx_idx)
 {
 	raw_pact_t *t;
-	small_idx_t ntx = 0;
+	small_idx_t nrx = 0;
 
 	t = raw_block_pacts(block);
 	for (small_idx_t ti = 0; ti < num_pacts(block); ti++) {
-		if (tx_idx <= ntx + pact_num_tx(t))
+		if (rx_idx <= nrx + pact_num_rx(t))
 			return (t);
 
-		ntx += pact_num_tx(t);
+		nrx += pact_num_rx(t);
 		t = (void *)t + pact_size(t);
 	}
 
@@ -716,13 +716,13 @@ raw_block_pacts(raw_block_t *raw_block)
 void
 raw_block_print(raw_block_t *raw_block)
 {
-	small_idx_t rx_num, tx_num;
+	small_idx_t tx_num, rx_num;
 	address_name_t addr_name;
 	node_name_t node_name;
 	raw_pact_t *t;
 	small_hash_t thash;
-	pact_rx_t *rx;
 	pact_tx_t *tx;
+	pact_rx_t *rx;
 	time_t tm;
 
 	tm = (time_t)be64toh(raw_block->time);
@@ -758,36 +758,36 @@ raw_block_print(raw_block_t *raw_block)
 	
 	for (small_idx_t i = 0; i < num_pacts(raw_block); i++) {
 		pact_hash(t, thash);
-		rx_num = pact_num_rx(t);
 		tx_num = pact_num_tx(t);
-		rx = (void *)t + sizeof(raw_pact_t);
+		rx_num = pact_num_rx(t);
+		tx = (void *)t + sizeof(raw_pact_t);
 		printf("    - pact_hash: ");
 		for (size_t i = 0; i < sizeof(small_hash_t); i++)
 			printf("%02x", thash[i]);
 		printf("\n");
 		
-		printf("      rx:%s\n", rx_num ? "" : " []");
-		for (small_idx_t ri = 0; ri < rx_num; ri++) {
+		printf("      tx:%s\n", tx_num ? "" : " []");
+		for (small_idx_t ri = 0; ri < tx_num; ri++) {
 			printf("        - block_idx: %ju\n",
-				be64toh(rx->block_idx));
-			printf("          block_tx_idx: %d\n",
-				be32toh(rx->block_tx_idx));
+				be64toh(tx->block_idx));
+			printf("          block_rx_idx: %d\n",
+				be32toh(tx->block_rx_idx));
 			printf("          signature: ");
 			for (size_t i = 0; i < sizeof(signature_t); i++)
-				printf("%02x", rx->signature[i]);
+				printf("%02x", tx->signature[i]);
 			printf("\n");
-			rx = (void *)rx + sizeof(pact_rx_t);
-		}
-		tx = (void *)rx;
-		printf("      tx:\n");
-		for (small_idx_t ti = 0; ti < tx_num; ti++) {
-			public_key_address_name(tx->address, addr_name);
-			printf("        - address: %s\n", addr_name);
-			printf("          amount: %2.2f\n",
-				stoi(be64toh(tx->amount)));
 			tx = (void *)tx + sizeof(pact_tx_t);
 		}
-		t = (void *)tx;
+		rx = (void *)tx;
+		printf("      rx:\n");
+		for (small_idx_t ti = 0; ti < rx_num; ti++) {
+			public_key_address_name(rx->address, addr_name);
+			printf("        - address: %s\n", addr_name);
+			printf("          amount: %2.2f\n",
+				stoi(be64toh(rx->amount)));
+			rx = (void *)rx + sizeof(pact_rx_t);
+		}
+		t = (void *)rx;
 	}
 }
 

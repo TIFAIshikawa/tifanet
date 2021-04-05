@@ -27,35 +27,35 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __TIFA_TXCACHE_H
-#define __TIFA_TXCACHE_H
+#ifndef __TIFA_RXCACHE_H
+#define __TIFA_RXCACHE_H
 
 #include "pact.h"
 #include "block.h"
 
-typedef struct __txcache {
+typedef struct __rxcache {
 	big_idx_t block_idx;
-	small_idx_t block_tx_idx;
-	pact_tx_t tx;
-} txcache_t;
+	small_idx_t block_rx_idx;
+	pact_rx_t rx;
+} rxcache_t;
 
-extern big_idx_t txcache_last_block_idx(void);
+extern big_idx_t rxcache_last_block_idx(void);
 
-extern txcache_t *txcache(big_idx_t *size);
+extern rxcache_t *rxcache(big_idx_t *size);
 
-extern void txcache_hash(hash_t result_hash);
+extern void rxcache_hash(hash_t result_hash);
 
-extern void txcache_load(void);
-extern void txcache_reset(void);
+extern void rxcache_load(void);
+extern void rxcache_reset(void);
 
-extern void txcache_raw_block_add(raw_block_t *raw_block);
+extern void rxcache_raw_block_add(raw_block_t *raw_block);
 
-extern txcache_t **txcaches_for_address(address_t *address, size_t *amount);
-extern txcache_t *txcache_for_idxs(big_idx_t block_idx, small_idx_t block_tx_idx);
+extern rxcache_t **rxcaches_for_address(address_t *address, size_t *amount);
+extern rxcache_t *rxcache_for_idxs(big_idx_t block_idx, small_idx_t block_rx_idx);
 
-extern int txcache_exists(big_idx_t block_idx, small_idx_t block_tx_idx);
-extern void txcache_remove(big_idx_t block_idx, small_idx_t block_tx_idx);
+extern int rxcache_exists(big_idx_t block_idx, small_idx_t block_rx_idx);
+extern void rxcache_remove(big_idx_t block_idx, small_idx_t block_rx_idx);
 
 extern amount_t unspent_for_public_key(public_key_t address);
 
-#endif /* __TIFA_TXCACHE_H */
+#endif /* __TIFA_RXCACHE_H */
