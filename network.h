@@ -39,7 +39,8 @@
 
 
 typedef char magic_t[4];
-typedef uint16_t opcode_t;
+typedef uint8_t version_t;
+typedef uint8_t opcode_t;
 
 enum opcodes {
 	OP_NONE = 0,
@@ -78,6 +79,7 @@ extern char *opcode_names[];
 
 typedef struct __attribute__((__packed__)) __message {
 	magic_t magic;
+	version_t version;
 	opcode_t opcode;
 	tiny_flags_t flags;
 	userinfo_t userinfo;

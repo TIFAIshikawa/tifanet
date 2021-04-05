@@ -251,7 +251,7 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 
 	nev = info->payload;
 	msg = &nev->message_header;
-lprintf("on_close msg %s type %d\n", opcode_names[be16toh(msg->opcode)], nev->type);
+lprintf("on_close msg %s type %d\n", opcode_names[msg->opcode], nev->type);
 
 	if (nev->on_close)
 		nev->on_close(info, flags);
@@ -278,12 +278,12 @@ message_header_validate(event_info_t *info)
 		}
 		if (!opcode_valid(msg)) {
 			lprintf("message_read: opcode invalid: %u",
-				be16toh(msg->opcode));
+				msg->opcode);
 			return (FALSE);
 		}
 		if (!opcode_payload_size_valid(msg, nev->type)) {
 			lprintf("message_read: size %d not valid for opcode "
-				"%d", size, be16toh(msg->opcode));
+				"%d", size, msg->opcode);
 			return (FALSE);
 		}
 	}
@@ -495,7 +495,8 @@ message_init(message_t *msg, opcode_t opcode, small_idx_t size, userinfo_t info)
 
 	bzero(msg, sizeof(message_t));
 	bcopy(TIFA_IDENT, msg->magic, sizeof(magic_t));
-	msg->opcode = htobe16(opcode);
+	msg->version = TIFA_NETWORK_VERSION;
+	msg->opcode = opcode;
 	if (is_notar_node())
 		msg->flags |= MESSAGE_FLAG_PEER;
 	msg->flags = htobe16(msg->flags);

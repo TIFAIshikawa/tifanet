@@ -123,21 +123,13 @@ opcode_callback_t opcode_callbacks[OP_MAXOPCODE] = {
 int
 opcode_valid(message_t *msg)
 {
-	opcode_t opcode;
-
-	opcode = be16toh(msg->opcode);
-
-	return (opcode > OP_NONE && opcode < OP_MAXOPCODE);
+	return (msg->opcode > OP_NONE && msg->opcode < OP_MAXOPCODE);
 }
 
 int
 opcode_payload_size_valid(message_t *msg, int direction)
 {
-	opcode_t opcode;
-
-	opcode = be16toh(msg->opcode);
-
-	switch (opcode) {
+	switch (msg->opcode) {
 	case OP_PEERLIST:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (be32toh(msg->payload_size) == 0);
@@ -194,14 +186,14 @@ opcode_execute(event_info_t *info)
 	message_t *msg;
 
 	msg = network_message(info);
-	if (be16toh(msg->opcode) == OP_NONE || be16toh(msg->opcode) >= OP_MAXOPCODE) {
-		lprintf("msg->opcode invalid: %d", be16toh(msg->opcode));
+	if (msg->opcode == OP_NONE || msg->opcode >= OP_MAXOPCODE) {
+		lprintf("msg->opcode invalid: %d", msg->opcode);
 		event_remove(info);
 
 		return;
 	}
 
-	opcode_callbacks[be16toh(msg->opcode)](info);
+	opcode_callbacks[msg->opcode](info);
 }
 
 void
