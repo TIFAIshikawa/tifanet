@@ -205,7 +205,8 @@ main(int argc, char *argv[])
 	if (is_notar_node())
 		notar_elect_next();
 
-	block_poll_start();
+	if (!is_caches_only())
+		block_poll_start();
 
 	event_loop_start();
 

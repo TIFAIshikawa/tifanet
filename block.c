@@ -60,12 +60,14 @@ static char *__blocks = NULL;
 static big_idx_t *__block_idxs = NULL;
 static big_idx_t *__last_block_idx = NULL;
 
-static raw_block_t *__raw_block_last;
-static size_t __raw_block_last_size;
+static raw_block_t *__raw_block_last = NULL;
+static size_t __raw_block_last_size = 0;
 
 static big_idx_t __getblocks_target_idx = 0;
 
 static int __blockchain_is_updating = 0;
+
+static event_info_t *__block_poll_timer = NULL;
 
 void raw_block_broadcast(big_idx_t index);
 void add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt);
@@ -73,6 +75,13 @@ void add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt);
 big_idx_t
 block_idx_last()
 {
+	if (is_caches_only()) {
+		if (__raw_block_last)
+			return (block_idx(__raw_block_last));
+		else
+			return (0);
+	}
+
 	return (*__last_block_idx);
 }
 
@@ -308,6 +317,14 @@ raw_block_write(raw_block_t *raw_block, size_t blocksize)
 	size_t bsize;
 	char *dst;
 
+	if (is_caches_only()) {
+		if (__raw_block_last)
+			free(__raw_block_last);
+		__raw_block_last = malloc(blocksize);
+		bcopy(raw_block, __raw_block_last, blocksize);
+		return;
+	}
+
 	bsize = (char *)__raw_block_last - __blocks + __raw_block_last_size;
 
 	dst = (char *)__raw_block_last + __raw_block_last_size;
@@ -402,41 +419,43 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 		return (FALSE);
 	}
 
-	// check block index
-	if (block_idx(__raw_block_last) == block_idx(raw_block)) {
-		lprintf("already have block with index %ju",
-			block_idx(raw_block));
-		return (FALSE);
-	}
+	// check block index, if we have a last block (in case of caches only)
+	if (!is_caches_only() || (is_caches_only() && __raw_block_last)) {
+		if (block_idx(__raw_block_last) == block_idx(raw_block)) {
+			lprintf("already have block with index %ju",
+				block_idx(raw_block));
+			return (FALSE);
+		}
 
-	// check block index
-	if (block_idx(__raw_block_last) >= block_idx(raw_block)) {
-		lprintf("gotten block with index in the past: %ju",
-			block_idx(raw_block));
-		return (FALSE);
-	}
-	if (block_idx(raw_block) > block_idx(__raw_block_last) + 1) {
-		lprintf("gotten block with index %ju, reject for now",
-			block_idx(raw_block));
-		blockchain_set_updating(1);
-		blockchain_update();
-		blockchain_set_updating(0);
-		return (FALSE);
-	}
+		// check block index
+		if (block_idx(__raw_block_last) >= block_idx(raw_block)) {
+			lprintf("gotten block with index in the past: %ju",
+				block_idx(raw_block));
+			return (FALSE);
+		}
+		if (block_idx(raw_block) > block_idx(__raw_block_last) + 1) {
+			lprintf("gotten block with index %ju, reject for now",
+				block_idx(raw_block));
+			blockchain_set_updating(1);
+			blockchain_update();
+			blockchain_set_updating(0);
+			return (FALSE);
+		}
 
-	// check prev block hash
-	raw_block_hash(__raw_block_last, __raw_block_last_size, pbh);
-	if (bcmp(pbh, raw_block->prev_block_hash, sizeof(hash_t)) != 0) {
-		lprintf("gotten block with illegal prev_block_hash, index %ju",
-			block_idx(raw_block));
-		return (FALSE);
-	}
+		// check prev block hash
+		raw_block_hash(__raw_block_last, __raw_block_last_size, pbh);
+		if (hash_compare(pbh, raw_block->prev_block_hash) != 0) {
+			lprintf("gotten block with illegal prev_block_hash, "
+				"index %ju", block_idx(raw_block));
+			return (FALSE);
+		}
 
-	// check notar
-	if (pubkey_compare(notar_next(), raw_block->notar) != 0) {
-		lprintf("illegal notar for block index %ju",
-			block_idx(raw_block));
-		return (FALSE);
+		// check notar
+		if (pubkey_compare(notar_next(), raw_block->notar) != 0) {
+			lprintf("illegal notar for block index %ju",
+				block_idx(raw_block));
+			return (FALSE);
+		}
 	}
 
 	// check signature
@@ -507,6 +526,7 @@ raw_block_process(raw_block_t *raw_block, size_t blocksize)
 	raw_pact_t *t;
 	size_t size;
 
+	// if this node created last this block, caches_*_add is done elsewhere
 	if (pubkey_compare(node_public_key(), raw_block->notar) != 0) {
 		rxcache_raw_block_add(raw_block);
 		notar_raw_block_add(raw_block);
@@ -810,19 +830,8 @@ __blockchain_update(event_info_t *info, event_flags_t eventflags)
 void
 blockchain_update()
 {
-	event_info_t *info;
-	char tmp[INET6_ADDRSTRLEN + 1];
-	struct sockaddr_storage addr;
-
-	if (!peerlist_address_random(&addr))
-		return;
-
-	lprintf("asking peer %s for last block...", peername(&addr, tmp));
-	info = message_send(&addr, OP_LASTBLOCKINFO, NULL, 0, 0);
-
-	if (info)
-		info->on_close = __blockchain_update;
-	else
+	if (!message_send_random_with_callback(OP_LASTBLOCKINFO, NULL, 0, 0,
+		__blockchain_update))
 		blockchain_update();
 }
 
@@ -860,6 +869,7 @@ getblocks(big_idx_t target_idx)
 static void
 __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 {
+	__block_poll_timer = NULL;
 	message_broadcast(OP_GETBLOCK, NULL, 0, htobe64(block_idx_last() + 1));
 	block_poll_start();
 }
@@ -867,5 +877,16 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 void
 block_poll_start(void)
 {
+	block_poll_cancel();
 	timer_set(5000, __block_poll_tick, NULL);
+}
+
+void
+block_poll_cancel(void)
+{
+	if (!__block_poll_timer)
+		return;
+
+	timer_remove(__block_poll_timer);
+	__block_poll_timer = NULL;
 }

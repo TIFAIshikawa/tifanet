@@ -61,5 +61,6 @@ extern void keypair_verify_update(void *context, void *payload, size_t size);
 extern int keypair_verify_finalize(void *context, void *public_key, void *signature);
 
 extern int pubkey_compare(void *l, void *r);
+extern int hash_compare(hash_t l, hash_t r);
 
 #endif /* __TIFA_KEYPAIR_H */

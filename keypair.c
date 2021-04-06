@@ -197,3 +197,9 @@ pubkey_compare(void *l, void *r)
 {
 	return (bcmp(l, r, sizeof(public_key_t)));
 }
+
+int
+hash_compare(hash_t l, hash_t r)
+{
+	return (bcmp(l, r, sizeof(hash_t)));
+}

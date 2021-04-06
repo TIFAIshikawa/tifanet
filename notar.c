@@ -221,7 +221,7 @@ notars_cache_save(big_idx_t block_idx)
 
 	__notars_last_block_idx = be64toh(block_idx);
 	lprintf("saving notars @ block %ju...", __notars_last_block_idx);
-
+lprintf("SAVING NOTARSCACHE");
 	config_path(tmp, "blocks/notarscache.bin");
 	if (!(f = fopen(tmp, "w+")))
 		FAILTEMP("notars_cache_save: %s", strerror(errno));

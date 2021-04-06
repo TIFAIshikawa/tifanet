@@ -54,6 +54,7 @@
 #include "peerlist.h"
 #include "opcode_callback.h"
 
+#define NETWORK_DEBUG 1
 char *opcode_names[OP_MAXOPCODE] = {
 	"OP_NONE",
 	"OP_PEERLIST",
@@ -504,19 +505,60 @@ message_init(message_t *msg, opcode_t opcode, small_idx_t size, userinfo_t info)
 	msg->payload_size = htobe32(size);
 }
 
-event_info_t *
+static event_info_t *
 message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 	small_idx_t size, userinfo_t info)
 {
+	char tmp[INET6_ADDRSTRLEN + 1];
 	event_info_t *res;
 	message_t msg;
 
 	message_init(&msg, opcode, size, info);
 
-	if ((res = request_send(addr, &msg, payload)))
+	if ((res = request_send(addr, &msg, payload))) {
+#ifdef NETWORK_DEBUG
+		lprintf("sending message %s to %s", opcode_names[opcode],
+			peername(addr, tmp));
+#endif
 		return (res);
+	}
 
 	return (NULL);
+}
+
+event_info_t *
+message_send_random(opcode_t opcode, void *payload, small_idx_t size,
+	userinfo_t info)
+{
+	struct sockaddr_storage addr;
+
+	// attempt to get a non-local random IP address for at max 3 times
+	for (int i = 0; i < 3; i++) {
+		if (!peerlist_address_random(&addr))
+			return (NULL);
+		if (!is_local_interface_address(&addr))
+			break;
+	}
+
+	return (message_send(&addr, opcode, payload, size, info));
+}
+
+event_info_t *
+message_send_random_with_callback(opcode_t opcode, void *payload,
+	small_idx_t size, userinfo_t info, event_callback_t callback)
+{
+	event_info_t *res;
+
+	if ((res = message_send_random(opcode, payload, size, info)))
+		message_set_callback(res, callback);
+
+	return (res);
+}
+
+void
+message_set_callback(event_info_t *info, event_callback_t callback)
+{
+	info->on_close = callback;
 }
 
 int
@@ -526,6 +568,7 @@ is_local_interface_address(struct sockaddr_storage *addr)
 	struct sockaddr_in *ifa4, *a4;
 	struct sockaddr_in6 *ifa6, *a6;
 
+return 0;
 	if (!__ifaddrs) {
 		if (getifaddrs(&__ifaddrs) == -1) {
 			lprintf("is_local_interface_address: getifaddrs: %s",
@@ -615,30 +658,14 @@ size_t
 message_broadcast_with_callback(opcode_t opcode, void *payload,
 	small_idx_t size, userinfo_t info, event_callback_t callback)
 {
-#ifdef NETWORK_DEBUG
-	char tmp[INET6_ADDRSTRLEN + 1];
-#endif
-	struct sockaddr_storage addr;
 	event_info_t *req;
-	message_t msg;
 	small_idx_t n;
 	size_t res;
 
 	n = MIN(100, peerlist.list4_size + peerlist.list6_size);
 	for (res = 0; res < n; res++) {
-		if (!peerlist_address_random(&addr))
-			return (res);
-		if (is_local_interface_address(&addr)) // res will be bodged
-			continue;
-
-		message_init(&msg, opcode, size, info);
-
-#ifdef NETWORK_DEBUG
-		lprintf("broadcasting message %s to %s",
-			opcode_names[opcode], peername(&addr, tmp));
-#endif
-		if ((req = request_send(&addr, &msg, payload))) {
-			req->on_close = callback;
+		if ((req = message_send_random_with_callback(opcode,
+			payload, size, info, callback))) {
 			res++;
 		}
 
@@ -672,15 +699,16 @@ void
 getblock(big_idx_t index)
 {
 	char tmp[INET6_ADDRSTRLEN + 1];
-	struct sockaddr_storage addr;
+	network_event_t *nev;
 	event_info_t *info;
 
-	if (!peerlist_address_random(&addr))
-		return;
-
-	lprintf("asking peer %s for block %ju", peername(&addr, tmp), index);
-	if ((info = message_send(&addr, OP_GETBLOCK, NULL, 0, htobe64(index))))
-		info->on_close = __getblock_again;
-	else
+	if (!(info = message_send_random_with_callback(OP_GETBLOCK, NULL, 0,
+		htobe64(index), __getblock_again))) {
 		__getblock_again(info, EVENT_READ);
+		return;
+	}
+
+	nev = info->payload;
+	lprintf("asking peer %s for block %ju",
+		peername(&nev->remote_addr, tmp), index);
 }

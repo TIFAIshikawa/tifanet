@@ -35,6 +35,8 @@
 
 extern void cache_hash(hash_t resulthash);
 
+extern int cache_write(char *filename, char *buffer, size_t size);
+
 extern void cache_download(void);
 
 #endif /* __TIFA_NODE_H */

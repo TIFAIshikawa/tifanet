@@ -42,6 +42,7 @@
 #include "log.h"
 #include "notar.h"
 #include "error.h"
+#include "cache.h"
 #include "config.h"
 #include "keypair.h"
 #include "network.h"
@@ -310,6 +311,7 @@ op_lastblockinfo_server(event_info_t *info, network_event_t *nev)
 	message_t *msg;
 	raw_block_t *last;
 	hash_t block_hash;
+	char tmp[INET6_ADDRSTRLEN + 1];
 	op_lastblockinfo_response_t *blockinfo;
 
 	last = raw_block_last(&size);
@@ -333,6 +335,9 @@ op_lastblockinfo_server(event_info_t *info, network_event_t *nev)
 	event_update(info, EVENT_READ, EVENT_WRITE);
 	info->callback = message_write;
 	message_write(info, EVENT_WRITE);
+
+	lprintf("asking peer %s for last block...",
+		peername(&nev->remote_addr, tmp));
 }
 
 void
@@ -413,10 +418,11 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 
 	msg = network_message(info);
 
-	if (raw_block_validate(nev->userdata, be32toh(msg->payload_size)))
+	if (raw_block_validate(nev->userdata, be32toh(msg->payload_size))) {
+		block_poll_cancel();
 		raw_block_process(nev->userdata, be32toh(msg->payload_size));
+	}
 
-	info->on_close = NULL;
 	message_cancel(info);
 	getblocks(0);
 }
@@ -457,6 +463,7 @@ op_block_announce(event_info_t *info)
 	msg = network_message(info);
 
 	if (raw_block_validate(nev->userdata, be32toh(msg->payload_size))) {
+		block_poll_cancel();
 		raw_block_process(nev->userdata, nev->read_idx);
 
 		// get block from block storage (which is permanent, whereas
@@ -606,8 +613,11 @@ op_getrxcache_server(event_info_t *info, network_event_t *nev)
 	fseek(f, 0, SEEK_SET);
 	if (!(nev->userdata = malloc(size)))
 		return message_cancel(info);
-	if (fread(nev->userdata + sizeof(big_idx_t), 1, size, f) != size)
+	if (fread(nev->userdata, 1, size, f) != size) {
+		fclose(f);
 		return message_cancel(info);
+	}
+	fclose(f);
 
 	msg = network_message(info);
 
@@ -622,30 +632,6 @@ op_getrxcache_server(event_info_t *info, network_event_t *nev)
 	message_write(info, EVENT_WRITE);
 }
 
-static int
-__cache_write(char *filename, char *buffer, size_t size)
-{
-	char tmp0[MAXPATHLEN + 1];
-	char tmp1[MAXPATHLEN + 1];
-	size_t w, wr;
-	FILE *f;
-
-	snprintf(tmp0, MAXPATHLEN, "blocks/%s.bin", filename);
-	config_path(tmp1, tmp0);
-	if (!(f = fopen(tmp1, "w+")))
-		return (FALSE);
-
-	for (w = wr = 0; w >= 0; wr += w)
-		w = fwrite(buffer + wr, 1, size - wr, f);
-
-	if (wr != size)
-		FAILTEMP("failed writing rxcache: %s", strerror(errno));
-
-	fclose(f);
-
-	return (TRUE);
-}
-
 void
 op_getrxcache_client(event_info_t *info, network_event_t *nev)
 {
@@ -653,9 +639,8 @@ op_getrxcache_client(event_info_t *info, network_event_t *nev)
 
 	msg = network_message(info);
 
-	__cache_write("rxcache", nev->userdata, be32toh(msg->payload_size));
+	cache_write("rxcache", nev->userdata, be32toh(msg->payload_size));
 
-	info->on_close = NULL;
 	message_cancel(info);
 }
 
@@ -694,8 +679,11 @@ op_getnotars_server(event_info_t *info, network_event_t *nev)
 	fseek(f, 0, SEEK_SET);
 	if (!(nev->userdata = malloc(size)))
 		return message_cancel(info);
-	if (fread(nev->userdata, 1, size, f) != size)
+	if (fread(nev->userdata, 1, size, f) != size) {
+		fclose(f);
 		return message_cancel(info);
+	}
+	fclose(f);
 
 	msg = network_message(info);
 
@@ -717,8 +705,7 @@ op_getnotars_client(event_info_t *info, network_event_t *nev)
 
 	msg = network_message(info);
 
-	__cache_write("notarscache", nev->userdata, be32toh(msg->payload_size));
+	cache_write("notarscache", nev->userdata, be32toh(msg->payload_size));
 
-	info->on_close = NULL;
 	message_cancel(info);
 }

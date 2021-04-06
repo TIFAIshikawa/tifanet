@@ -285,8 +285,7 @@ rxcache_create()
 static void
 rxcache_read(FILE *f)
 {
-	size_t rsize, sz;
-	raw_block_t *b;
+	size_t rsize;
 
 	if (fread(&__rxcache_last_block_idx, 1, sizeof(big_idx_t), f) != sizeof(big_idx_t))
 		FAILTEMP("rxcache_read: failed reading index: %s",
@@ -296,12 +295,24 @@ rxcache_read(FILE *f)
 		FAILTEMP("rxcache_read: failed reading size: %s",
 			 strerror(errno));
 	__rxcache_size = be64toh(rsize);
+lprintf("-->%ld", __rxcache_size);
 	rsize = __rxcache_size * sizeof(rxcache_t);
+lprintf("rsizes->%ld", rsize);
 
 	__rxcache = malloc(rsize);
-	if (fread(__rxcache, 1, rsize, f) != rsize)
+size_t q;
+	if ((q = fread(__rxcache, 1, rsize, f)) != rsize) {
+lprintf("fread failed, q=%ld rsize=%ld", q, rsize);
 		FAILTEMP("rxcache_read: failed reading cache: %s",
 			 strerror(errno));
+}
+}
+
+static void
+rxcache_blocks_update(void)
+{
+	raw_block_t *b;
+	size_t sz;
 
 	if (block_idx_last() > __rxcache_last_block_idx) {
 		for (big_idx_t block_idx = __rxcache_last_block_idx + 1;
@@ -337,6 +348,7 @@ rxcache_load()
 	} else {
 		rxcache_read(f);
 		fclose(f);
+		rxcache_blocks_update();
 	}
 }
 

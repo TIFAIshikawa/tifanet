@@ -128,8 +128,13 @@ extern void listen_socket_open(void);
 extern network_event_t *network_event(event_info_t *info);
 extern message_t *network_message(event_info_t *info);
 
-extern event_info_t *message_send(struct sockaddr_storage *addr,
-	opcode_t opcode, void *payload, small_idx_t size, userinfo_t info);
+extern event_info_t *message_send_random(opcode_t opcode, void *payload,
+	small_idx_t size, userinfo_t info);
+extern event_info_t *message_send_random_with_callback(opcode_t opcode,
+	void *payload, small_idx_t size, userinfo_t info,
+	event_callback_t callback);
+extern void message_set_callback(event_info_t *event,
+	event_callback_t callback);
 extern void message_cancel(event_info_t *info);
 
 extern size_t message_broadcast(opcode_t opcode, void *payload,
