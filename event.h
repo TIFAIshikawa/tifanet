@@ -63,6 +63,7 @@ extern void event_update(event_info_t *event, event_flags_t to_remove, event_fla
 extern void event_remove(event_info_t *event);
 
 extern event_info_t *timer_set(uint64_t msec_delay, event_callback_t callback, void *payload);
+extern void timer_cancel(event_info_t *event);
 extern void timer_remove(event_info_t *event);
 
 extern void event_loop_start(void);

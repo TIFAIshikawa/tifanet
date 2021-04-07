@@ -252,7 +252,6 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 
 	nev = info->payload;
 	msg = &nev->message_header;
-lprintf("on_close msg %s type %d\n", opcode_names[msg->opcode], nev->type);
 
 	if (nev->on_close)
 		nev->on_close(info, flags);
@@ -702,13 +701,13 @@ getblock(big_idx_t index)
 	network_event_t *nev;
 	event_info_t *info;
 
-	if (!(info = message_send_random_with_callback(OP_GETBLOCK, NULL, 0,
-		htobe64(index), __getblock_again))) {
+	if (!(info = message_send_random(OP_GETBLOCK, NULL, 0,
+		htobe64(index)))) {
 		__getblock_again(info, EVENT_READ);
 		return;
 	}
 
 	nev = info->payload;
-	lprintf("asking peer %s for block %ju",
+	lprintf("asking host %s for block %ju",
 		peername(&nev->remote_addr, tmp), index);
 }

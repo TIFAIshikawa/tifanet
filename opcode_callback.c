@@ -357,10 +357,13 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 		getblocks(rmt_idx);
 	} else {
 		lprintf("fully synchronized");
+		blockchain_set_updating(0);
+
 		if (is_sync_only())
 			exit(0);
 
-		daemon_start();
+		if (!is_caches_only())
+			daemon_start();
 	}
 
 	info->on_close = NULL;
@@ -564,16 +567,13 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 void
 op_pact_client(event_info_t *info, network_event_t *nev)
 {
+	char tmp[SMALL_HASH_STR_LENGTH];
 	op_pact_response_t *response;
 
 	response = nev->userdata;
 	printf("  - result: %s\n", schkerror(be32toh(response->code)));
 	printf("    code: %u\n", be32toh(response->code));
-	printf("    pact_hash: ");
-	for (size_t i = 0; i < sizeof(small_hash_t); i++)
-		printf("%02x", response->pact_hash[i]);
-	printf("\n");
-
+	printf("    pact_hash: %s\n", small_hash_str(response->pact_hash, tmp));
 
 	message_cancel(info);
 }
@@ -639,6 +639,7 @@ op_getrxcache_client(event_info_t *info, network_event_t *nev)
 
 	msg = network_message(info);
 
+	msg = network_message(info);
 	cache_write("rxcache", nev->userdata, be32toh(msg->payload_size));
 
 	message_cancel(info);

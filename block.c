@@ -51,6 +51,7 @@
 #include "cache.h"
 #include "config.h"
 #include "wallet.h"
+#include "keypair.h"
 #include "network.h"
 #include "rxcache.h"
 #include "pact.h"
@@ -321,6 +322,7 @@ raw_block_write(raw_block_t *raw_block, size_t blocksize)
 		if (__raw_block_last)
 			free(__raw_block_last);
 		__raw_block_last = malloc(blocksize);
+		__raw_block_last_size = blocksize;
 		bcopy(raw_block, __raw_block_last, blocksize);
 		return;
 	}
@@ -438,7 +440,6 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 				block_idx(raw_block));
 			blockchain_set_updating(1);
 			blockchain_update();
-			blockchain_set_updating(0);
 			return (FALSE);
 		}
 
@@ -450,6 +451,7 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 			return (FALSE);
 		}
 
+		notar_elect_next();
 		// check notar
 		if (pubkey_compare(notar_next(), raw_block->notar) != 0) {
 			lprintf("illegal notar for block index %ju",
@@ -480,6 +482,10 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 				block_idx(raw_block));
 		else
 			err = raw_pact_validate(t);
+
+		if (is_caches_only() && err == ERR_RX_SPENT &&
+			rxcache_last_block_idx() == block_idx(raw_block))
+			err = 0;
 		switch (err) {
 		case 0: break;
 		case ERR_RX_SPENT:
@@ -542,6 +548,9 @@ raw_block_process(raw_block_t *raw_block, size_t blocksize)
 	raw_block_write(raw_block, blocksize);
 
 	notar_elect_next();
+
+//	if (!blockchain_is_updating())
+//		block_poll_start();
 }
 
 void
@@ -736,6 +745,8 @@ raw_block_pacts(raw_block_t *raw_block)
 void
 raw_block_print(raw_block_t *raw_block)
 {
+	char stmp[SIGNATURE_STR_LENGTH];
+	char htmp[HASH_STR_LENGTH];
 	small_idx_t tx_num, rx_num;
 	address_name_t addr_name;
 	node_name_t node_name;
@@ -753,10 +764,8 @@ raw_block_print(raw_block_t *raw_block)
 	if (be64toh(raw_block->flags) & BLOCK_FLAG_NEW_NOTAR)
 		printf(" BLOCK_FLAG_NEW_NOTAR");
 	printf("\n");
-	printf("  prev_block_hash: ");
-	for (size_t i = 0; i < sizeof(hash_t); i++)
-		printf("%02x", raw_block->prev_block_hash[i]);
-	printf("\n");
+	printf("  prev_block_hash: %s\n",
+		hash_str(raw_block->prev_block_hash, htmp));
 	public_key_node_name(raw_block->notar, node_name);
 	printf("  notar: %s\n", node_name);
 	if (be64toh(raw_block->flags) & BLOCK_FLAG_NEW_NOTAR) {
@@ -764,14 +773,8 @@ raw_block_print(raw_block_t *raw_block)
 			node_name);
 		printf("  new_notar: %s\n", node_name);
 	}
-	printf("  signature: ");
-	for (size_t i = 0; i < sizeof(signature_t); i++)
-		printf("%02x", raw_block->signature[i]);
-	printf("\n");
-	printf("  cache_hash: ");
-	for (size_t i = 0; i < sizeof(hash_t); i++)
-		printf("%02x", raw_block->cache_hash[i]);
-	printf("\n");
+	printf("  signature: %s\n", signature_str(raw_block->signature, stmp));
+	printf("  cache_hash: %s\n", hash_str(raw_block->cache_hash, htmp));
 	printf("  num_pacts: %d\n", num_pacts(raw_block));
 	printf("  pacts:\n");
 	t = raw_block_pacts(raw_block);
@@ -781,10 +784,7 @@ raw_block_print(raw_block_t *raw_block)
 		tx_num = pact_num_tx(t);
 		rx_num = pact_num_rx(t);
 		tx = (void *)t + sizeof(raw_pact_t);
-		printf("    - pact_hash: ");
-		for (size_t i = 0; i < sizeof(small_hash_t); i++)
-			printf("%02x", thash[i]);
-		printf("\n");
+		printf("    - pact_hash: %s\n", small_hash_str(thash, htmp));
 		
 		printf("      tx:%s\n", tx_num ? "" : " []");
 		for (small_idx_t ri = 0; ri < tx_num; ri++) {
@@ -792,10 +792,8 @@ raw_block_print(raw_block_t *raw_block)
 				be64toh(tx->block_idx));
 			printf("          block_rx_idx: %d\n",
 				be32toh(tx->block_rx_idx));
-			printf("          signature: ");
-			for (size_t i = 0; i < sizeof(signature_t); i++)
-				printf("%02x", tx->signature[i]);
-			printf("\n");
+			printf("          signature: %s\n",
+				signature_str(tx->signature, stmp));
 			tx = (void *)tx + sizeof(pact_tx_t);
 		}
 		rx = (void *)tx;
@@ -877,16 +875,19 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 void
 block_poll_start(void)
 {
-	block_poll_cancel();
+	if (__block_poll_timer)
+		return;
+
 	timer_set(5000, __block_poll_tick, NULL);
 }
 
 void
 block_poll_cancel(void)
 {
+return;
 	if (!__block_poll_timer)
 		return;
 
-	timer_remove(__block_poll_timer);
+	timer_cancel(__block_poll_timer);
 	__block_poll_timer = NULL;
 }

@@ -33,6 +33,10 @@
 //#define KEYPAIR_NAME_LENGTH (512 / 8 * 2)
 #define KEYPAIR_NAME_LENGTH (48 + 4 + 1)
 
+#define SMALL_HASH_STR_LENGTH ((2 * 16) + 1)
+#define HASH_STR_LENGTH ((2 * 32) + 1)
+#define SIGNATURE_STR_LENGTH ((2 * 64) + 1)
+
 struct __keypair;
 typedef struct __keypair keypair_t;
 
@@ -62,5 +66,9 @@ extern int keypair_verify_finalize(void *context, void *public_key, void *signat
 
 extern int pubkey_compare(void *l, void *r);
 extern int hash_compare(hash_t l, hash_t r);
+
+extern char *small_hash_str(small_hash_t h, char *tmp);
+extern char *hash_str(hash_t h, char *tmp);
+extern char *signature_str(signature_t s, char *tmp);
 
 #endif /* __TIFA_KEYPAIR_H */

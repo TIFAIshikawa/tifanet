@@ -212,7 +212,7 @@ notar_elect_next(void)
 }
 
 static void
-notars_cache_save(big_idx_t block_idx)
+notarscache_save(big_idx_t block_idx)
 {
 	char tmp[MAXPATHLEN + 1];
 	big_idx_t size;
@@ -221,22 +221,21 @@ notars_cache_save(big_idx_t block_idx)
 
 	__notars_last_block_idx = be64toh(block_idx);
 	lprintf("saving notars @ block %ju...", __notars_last_block_idx);
-lprintf("SAVING NOTARSCACHE");
 	config_path(tmp, "blocks/notarscache.bin");
 	if (!(f = fopen(tmp, "w+")))
-		FAILTEMP("notars_cache_save: %s", strerror(errno));
+		FAILTEMP("notarscache_save: %s", strerror(errno));
 
 	if (fwrite(&block_idx, 1, sizeof(big_idx_t), f) != sizeof(big_idx_t))
-		FAILTEMP("notars_cache_save: failed writing index: %s",
+		FAILTEMP("notarscache_save: failed writing index: %s",
 			 strerror(errno));
 	size = htobe64(__notars_count);
 	if (fwrite(&size, 1, sizeof(big_idx_t), f) != sizeof(big_idx_t))
-		FAILTEMP("notars_cache_save: failed writing size: %s",
+		FAILTEMP("notarscache_save: failed writing size: %s",
 			 strerror(errno));
 
 	wsize = __notars_count * sizeof(public_key_t);
 	if (fwrite(__notars, 1, wsize, f) != wsize)
-		FAILTEMP("notars_cache_save: failed writing list: %s",
+		FAILTEMP("notarscache_save: failed writing list: %s",
 			 strerror(errno));
 
 	fclose(f);
@@ -249,13 +248,13 @@ notar_raw_block_add(raw_block_t *raw_block)
 		notar_add((void *)raw_block + sizeof(raw_block_t));
 
 	if (block_idx(raw_block) % CACHE_HASH_BLOCK_INTERVAL == 0)
-		notars_cache_save(raw_block->index);
+		notarscache_save(raw_block->index);
  
 	__last_block_time = be64toh(raw_block->time);
 }
 
 static void
-notars_cache_create(void)
+notarscache_create(void)
 {
 	size_t sz;
 	raw_block_t *b;
@@ -268,7 +267,7 @@ notars_cache_create(void)
 }
 
 static void
-notars_cache_read(FILE *f)
+notarscache_read(FILE *f)
 {
 	size_t rsize, sz;
 	raw_block_t *b;
@@ -309,7 +308,7 @@ notars_cache_read(FILE *f)
 }
 
 void
-notars_cache_load(void)
+notarscache_load(void)
 {
 	FILE *f;
 	char tmp[MAXPATHLEN + 1];
@@ -322,9 +321,9 @@ notars_cache_load(void)
 
 	config_path(tmp, "blocks/notarscache.bin");
 	if (!(f = fopen(tmp, "r"))) {
-		notars_cache_create();
+		notarscache_create();
 	} else {
-		notars_cache_read(f);
+		notarscache_read(f);
 		fclose(f);
 	}
 }
@@ -373,7 +372,7 @@ notar_pending_next(void)
 }
 
 void
-notars_cache_hash(hash_t result_hash)
+notarscache_hash(hash_t result_hash)
 {
 	crypto_generichash_state crx;
         big_idx_t idx;

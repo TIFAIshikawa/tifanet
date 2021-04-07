@@ -193,7 +193,7 @@ rxcache_remove(big_idx_t block_idx, small_idx_t block_rx_idx)
 	}
 
 	//FAIL(EX_SOFTWARE, "rxcache_remove: block_idx %ju, block_rx_idx %u doesn't exist in cache!", block_idx, block_rx_idx);
-	lprintf("rxcache_remove: block_idx %ju, block_rx_idx %u doesn't exist in cache!", block_idx, block_rx_idx);
+	lprintf("rxcache_remove: block_idx %ju, block_rx_idx %u doesn't exist in cache!", be64toh(block_idx), be16toh(block_rx_idx));
 }
 
 static void
@@ -295,17 +295,12 @@ rxcache_read(FILE *f)
 		FAILTEMP("rxcache_read: failed reading size: %s",
 			 strerror(errno));
 	__rxcache_size = be64toh(rsize);
-lprintf("-->%ld", __rxcache_size);
 	rsize = __rxcache_size * sizeof(rxcache_t);
-lprintf("rsizes->%ld", rsize);
 
 	__rxcache = malloc(rsize);
-size_t q;
-	if ((q = fread(__rxcache, 1, rsize, f)) != rsize) {
-lprintf("fread failed, q=%ld rsize=%ld", q, rsize);
+	if (fread(__rxcache, 1, rsize, f) != rsize)
 		FAILTEMP("rxcache_read: failed reading cache: %s",
 			 strerror(errno));
-}
 }
 
 static void

@@ -35,7 +35,6 @@
 #include "keypair.h"
 
 extern big_idx_t notars_last_block_idx(void);
-
 extern public_key_t *notars(big_idx_t *num_notars);
 extern public_key_t *notar_next(void);
 
@@ -49,7 +48,7 @@ extern void notar_start(void);
 
 extern void notar_elect_next(void);
 
-extern void notars_cache_hash(hash_t result_hash);
-extern void notars_cache_load(void);
+extern void notarscache_hash(hash_t result_hash);
+extern void notarscache_load(void);
 
 #endif /* __TIFA_NOTAR_H */

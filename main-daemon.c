@@ -145,7 +145,7 @@ main(int argc, char *argv[])
 
 	if (!is_caches_only()) {
 		block_last_load();
-		notars_cache_load();
+		notarscache_load();
 		rxcache_load();
 		if (notars_last_block_idx() != rxcache_last_block_idx()) {
 			lprintf("notarscache block idx %ju != rxcache block "
@@ -192,21 +192,18 @@ main(int argc, char *argv[])
 
 	blockchain_set_updating(1);
 	if (is_caches_only()) {
-		if (!skip_update)
-			cache_download();
+		cache_download();
 	} else {
 		if (skip_update)
 			daemon_start();
 		else
 			blockchain_update();
 	}
-	blockchain_set_updating(0);
 
 	if (is_notar_node())
 		notar_elect_next();
 
-	if (!is_caches_only())
-		block_poll_start();
+	block_poll_start();
 
 	event_loop_start();
 

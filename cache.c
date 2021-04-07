@@ -48,7 +48,7 @@ cache_hash(hash_t resulthash)
 	hash_t hash[CACHE_HASH_AMOUNT];
 
 	rxcache_hash(hash[0]);
-	notars_cache_hash(hash[1]);
+	notarscache_hash(hash[1]);
 
 	crypto_generichash(resulthash, sizeof(hash_t),
 			   (void *)hash, sizeof(hash_t) * CACHE_HASH_AMOUNT,
@@ -91,11 +91,14 @@ caches_get_blocks(event_info_t *info, event_flags_t eventflags)
 
 	if (hash_compare(hash, rb->cache_hash) != 0) {
 		lprintf("local cache hash doesn't equal block cache_hash "
-			"@ idx %ju", block_idx_last());
-		return cache_download();
+			"@ idx %ju (rxcache idx %ju notarscache idx %ju)",
+			block_idx_last(), rxcache_last_block_idx(),
+			notars_last_block_idx());
+		//return cache_download();
 	}
 
-	blockchain_update();
+//	blockchain_set_updating(1);
+//	blockchain_update();
 }
 
 static void
@@ -107,16 +110,14 @@ caches_only_download_callback(event_info_t *info, event_flags_t eventflags)
 	if (__caches_only_downloaded < 2)
 		return;
 
-	notars_cache_load();
+	notarscache_load();
 	rxcache_load();
 	if (notars_last_block_idx() != rxcache_last_block_idx())
 		FAILTEMP("notarscache idx %ju != rxcache idx %ju",
 			notars_last_block_idx(), rxcache_last_block_idx());
 
 	index = notars_last_block_idx();
-lprintf("--->getindex=%ju", index);
-	index = rxcache_last_block_idx();
-lprintf("--->getindex=%ju", index);
+	lprintf("asking for block %ju", index);
 	if (!message_send_random_with_callback(OP_GETBLOCK, NULL, 0,
 		htobe64(index), caches_get_blocks))
 		FAILTEMP("failed to request block idx %ju", index);

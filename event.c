@@ -156,7 +156,8 @@ timer_set(uint64_t msec_delay, event_callback_t callback, void *payload)
 	event.data.fd = res->ident;
 	event.data.ptr = res;
 
-	if (epoll_ctl(__eventfd, first ? EPOLL_CTL_ADD : EPOLL_CTL_MOD, res->ident, &event) == -1)
+	if (epoll_ctl(__eventfd, first ? EPOLL_CTL_ADD : EPOLL_CTL_MOD,
+		res->ident, &event) == -1)
 		FAIL(EX_TEMPFAIL, "event_add: %s\n", strerror(errno));
 #else
 	struct kevent event;
@@ -170,6 +171,28 @@ timer_set(uint64_t msec_delay, event_callback_t callback, void *payload)
 #endif
 
 	return (res);
+}
+
+void
+timer_cancel(event_info_t *info)
+{
+	struct kevent event;
+
+	if (!(info->flags & EVENT_TIMER))
+		FAIL(EX_SOFTWARE, "timer_cancel: info %p is not a timer", info);
+
+#ifdef __linux__
+	// TODO
+#else
+	EV_SET(&event, info->ident, EVFILT_TIMER, EV_DELETE, 0, 0, info);
+
+	if (kevent(__eventfd, &event, 1, NULL, 0, NULL) == -1)
+		lprintf("timer_cancel: %s\n", strerror(errno));
+	else
+		lprintf("timer_cancel: OKOKOK!!\n");
+#endif
+
+	timer_remove(info);
 }
 
 void
