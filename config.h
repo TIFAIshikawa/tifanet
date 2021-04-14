@@ -50,7 +50,7 @@
  * 0.2: Connect to both IPv4 & IPv6
  * 0.1: Base functionality working, send & receive of pact type I
  */
-#define TIFA_VERSION_STR	"0.3.0"
+#define TIFA_VERSION_STR	"0.4.0"
 #define TIFA_NETWORK_VERSION	1
 
 /*     If you fork TIFAnet, change these defines!!!!     */
