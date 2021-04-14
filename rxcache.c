@@ -196,7 +196,7 @@ rxcache_remove(big_idx_t block_idx, small_idx_t block_rx_idx)
 	lprintf("rxcache_remove: block_idx %ju, block_rx_idx %u doesn't exist in cache!", be64toh(block_idx), be16toh(block_rx_idx));
 }
 
-static void
+void
 rxcache_save(big_idx_t block_idx)
 {
 	char tmp[MAXPATHLEN + 1];

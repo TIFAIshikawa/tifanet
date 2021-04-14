@@ -73,12 +73,14 @@ config_load()
 	mkdir(config_path(tmp, "wallets"), 0700);
 	mkdir(config_path(tmp, "blocks"), 0700);
 
+/*
 	config_path(tmp, "blocks/blocks0.bin");
 	if (access(tmp, F_OK | R_OK | W_OK) != 0) {
 		rewrite_file("blocks/blocks0.bin", __block0, sizeof(__block0));
 		rewrite_file("blocks/blocks0.idx", &idx, sizeof(big_idx_t));
 		rewrite_file("blocks/lastblock.idx", &idx, sizeof(big_idx_t));
 	}
+*/
 
 	config_path(tmp, "config");
 	__config_dir[MAXPATHLEN] = '\0';

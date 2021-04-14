@@ -50,5 +50,6 @@ extern void notar_elect_next(void);
 
 extern void notarscache_hash(hash_t result_hash);
 extern void notarscache_load(void);
+extern void notarscache_save(big_idx_t idx);
 
 #endif /* __TIFA_NOTAR_H */

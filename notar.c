@@ -62,6 +62,9 @@ static small_idx_t __pending_notars_base = 0;
 static small_idx_t __pending_notars_size = 0;
 static small_idx_t __pending_notars_count = 0;
 
+static event_info_t *__notar_timer = NULL;
+static event_info_t *__notar_announce_timer = NULL;
+
 static void notar_tick(event_info_t *info, event_flags_t eventtype);
 static void schedule_generate_block_retry(void);
 
@@ -112,10 +115,27 @@ should_generate_block()
 }
 
 static void
+__notar_announce_tick(event_info_t *info, event_flags_t eventtype)
+{
+	__notar_announce_timer = NULL;
+
+	notar_start();
+}
+
+static void
 notar_announce(void)
 {
+	uint64_t delay;
+
+	if (__notar_announce_timer)
+		return;
+
 	message_broadcast(OP_NOTAR_ANNOUNCE, node_public_key(), sizeof(hash_t),
 		0);
+
+	delay = randombytes_random() % 3600000;
+
+	__notar_announce_timer = timer_set(delay, __notar_announce_tick, NULL);
 }
 
 void
@@ -168,15 +188,20 @@ notar_add(public_key_t new_notar)
 static void
 notar_tick(event_info_t *info, event_flags_t eventtype)
 {
+	__notar_timer = NULL;
+
 	block_generate_next();
 }
 
 static void
 schedule_generate_block_retry(void)
 {
+	if (__notar_timer)
+		return;
+
 //	lprintf("should create block but no pacts, delaying");
 
-	timer_set(4000, notar_tick, NULL);
+	__notar_timer = timer_set(4000, notar_tick, NULL);
 }
 
 void
@@ -211,7 +236,7 @@ notar_elect_next(void)
 	}
 }
 
-static void
+void
 notarscache_save(big_idx_t block_idx)
 {
 	char tmp[MAXPATHLEN + 1];

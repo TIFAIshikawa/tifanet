@@ -50,6 +50,7 @@
 
 static char *cmd;
 static size_t send_count;
+static int caches_only;
 
 static int usage(int deliberate);
 
@@ -225,6 +226,12 @@ opt_blocks(int argc, char *argv[])
 	size_t sz;
 	big_idx_t idx;
 	raw_block_t *raw_block;
+
+printf("cachesonly=%d\n", caches_only);
+	if (caches_only) {
+		printf("blocks option is not available on thin clients.\n");
+		return (EX_USAGE);
+	}
 
 	switch (argc) {
 	case 0:
@@ -464,8 +471,7 @@ opt_send(int argc, char *argv[])
 	if (src) {
 		items = rxcaches_for_address(src, &tsize);
 		for (size_t i = 0; i < tsize; i++)
-			pact_tx_add(t, be64toh(items[i]->block_idx),
-				be32toh(items[i]->block_rx_idx));
+			pact_tx_add(t, items[i]->block_idx, items[i]->block_rx_idx);
 		if (balance - amount > 0)
 			pact_rx_add(t, address_public_key(src),
 				balance - amount);
@@ -480,9 +486,8 @@ opt_send(int argc, char *argv[])
 		if (src) {
 			items = rxcaches_for_address(src, &tsize);
 			for (size_t i = 0; i < tsize; i++)
-				pact_tx_add(t,
-					be64toh(items[i]->block_idx),
-					be32toh(items[i]->block_rx_idx));
+				pact_tx_add(t, items[i]->block_idx,
+					items[i]->block_rx_idx);
 		} else {
 			tmp_amount = amount;
 			for (size_t i = 0; i < naddrs && tmp_amount; i++) {
@@ -492,11 +497,15 @@ opt_send(int argc, char *argv[])
 					items = rxcaches_for_address(addrs[i],
 						&tsize);
 					for (size_t i = 0; i < tsize; i++)
-						pact_tx_add(t, be64toh(items[i]->block_idx), be32toh(items[i]->block_rx_idx));
+						pact_tx_add(t,
+							items[i]->block_idx,
+							items[i]->block_rx_idx);
 				} else {
 					items = rxcaches_for_address(addrs[i], &tsize);
 					for (size_t i = 0; i < tsize; i++)
-						pact_tx_add(t, be64toh(items[i]->block_idx), be32toh(items[i]->block_rx_idx));
+						pact_tx_add(t,
+							items[i]->block_idx,
+							items[i]->block_rx_idx);
 					pact_rx_add(t, address_public_key(addrs[i]), a_amount - tmp_amount);
 					tmp_amount = 0;
 				}
@@ -555,6 +564,19 @@ opt_resetblocks(int argc, char *argv[])
 	return (TRUE);
 }
 
+static int
+check_caches_only(void)
+{
+	char tmp[MAXPATHLEN + 1];
+
+	if (access(config_path(tmp, "blocks/rxcache.bin"), R_OK) == 0 &&
+		access(config_path(tmp, "blocks/blocks0.bin"), R_OK) == -1)
+		caches_only = TRUE;
+
+printf("cachesonly=%d\n", caches_only);
+	return (caches_only);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -584,7 +606,10 @@ block_generate_next();
 raw_block_t *rb = raw_block_last();
 exit(1);
 */
-	block_last_load();
+	if (!check_caches_only()) {
+		blockchain_load();
+		block_last_load();
+	}
 	rxcache_load();
 
 	argc -= 2;

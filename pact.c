@@ -114,16 +114,14 @@ pact_rx_add(pact_t *pact, public_key_t rx_public_key, amount_t amount)
 void
 pact_finalize(pact_t *pact)
 {
-	size_t sz;
 	big_idx_t idx;
 	pact_tx_t *tx;
 	pact_rx_t *rx;
-	raw_block_t *b;
+	rxcache_t *rxc;
 	address_t *addr;
 	small_idx_t rxidx;
 	keypair_t *addr_kp;
 	address_name_t addr_name;
-	public_key_t *addr_pubkey;
 
 	for (small_idx_t i = 0; i < pact->num_rx; i++) {
 		rx = pact->rx[i];
@@ -131,21 +129,21 @@ pact_finalize(pact_t *pact)
 	}
 	for (small_idx_t ri = 0; ri < pact->num_tx; ri++) {
 		tx = pact->tx[ri];
-		if (!(b = block_load(tx->block_idx, &sz)))
+
+		idx = tx->block_idx;
+		rxidx = tx->block_rx_idx;
+
+		if (!(rxc = rxcache_for_idxs(idx, rxidx)))
 			FAIL(EX_SOFTWARE, "finalize_pact: "
-			     "block not found: %ld\n", tx->block_idx);
-		if (!(addr_pubkey = (void *)public_key_find_by_rx_idx(b, tx->block_rx_idx)))
-			FAIL(EX_SOFTWARE, "finalize_pact: block %ld: "
-			     "rx_idx not found: %d\n",
-			     tx->block_idx, tx->block_rx_idx);
-		if (!(addr = address_find_by_public_key(*addr_pubkey)))
+		     		"rxcache not found: block idx %ju, rx idx %d\n",
+				idx, rxidx);
+		if (!(addr = address_find_by_public_key(rxc->rx.address)))
 			FAIL(EX_SOFTWARE, "finalize_pact: address "
 			     "not found for public key: %s\n",
-			     public_key_address_name(*addr_pubkey, addr_name));
+			     public_key_address_name(rxc->rx.address,
+				addr_name));
 		addr_kp = address_keypair(addr);
 
-		idx = be64toh(tx->block_idx);
-		rxidx = be32toh(tx->block_rx_idx);
 		keypair_sign_start(addr_kp, NULL, 0);
 		keypair_sign_update(addr_kp, &idx, sizeof(big_idx_t));
 		keypair_sign_update(addr_kp, &rxidx, sizeof(small_idx_t));
@@ -157,8 +155,8 @@ pact_finalize(pact_t *pact)
 	}
 	for (small_idx_t i = 0; i < pact->num_tx; i++) {
 		tx = pact->tx[i];
-		tx->block_idx = htobe64(tx->block_idx);
-		tx->block_rx_idx = htobe32(tx->block_rx_idx);
+		tx->block_idx = tx->block_idx;
+		tx->block_rx_idx = tx->block_rx_idx;
 	}
 
 	pact->time = htobe64(pact->time);

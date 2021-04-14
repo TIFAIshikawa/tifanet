@@ -55,6 +55,13 @@
 static void
 save_state(int signal)
 {
+	big_idx_t idx;
+
+	if (is_caches_only()) {
+		idx = be64toh(block_idx_last());
+		rxcache_save(idx);
+		notarscache_save(idx);
+	}
 	peerlist_save();
 	exit(0);
 }
@@ -143,7 +150,10 @@ main(int argc, char *argv[])
 	wallets_load();
 	peerlist_load();
 
-	if (!is_caches_only()) {
+	if (is_caches_only()) {
+		blocks_remove();
+	} else {
+		blockchain_load();
 		block_last_load();
 		notarscache_load();
 		rxcache_load();
@@ -190,14 +200,14 @@ main(int argc, char *argv[])
 
 	peerlist_request_broadcast();
 
-	blockchain_set_updating(1);
 	if (is_caches_only()) {
 		cache_download();
 	} else {
-		if (skip_update)
+		if (skip_update) {
 			daemon_start();
-		else
+		} else {
 			blockchain_update();
+		}
 	}
 
 	if (is_notar_node())

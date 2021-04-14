@@ -311,7 +311,6 @@ op_lastblockinfo_server(event_info_t *info, network_event_t *nev)
 	message_t *msg;
 	raw_block_t *last;
 	hash_t block_hash;
-	char tmp[INET6_ADDRSTRLEN + 1];
 	op_lastblockinfo_response_t *blockinfo;
 
 	last = raw_block_last(&size);
@@ -335,9 +334,6 @@ op_lastblockinfo_server(event_info_t *info, network_event_t *nev)
 	event_update(info, EVENT_READ, EVENT_WRITE);
 	info->callback = message_write;
 	message_write(info, EVENT_WRITE);
-
-	lprintf("asking peer %s for last block...",
-		peername(&nev->remote_addr, tmp));
 }
 
 void
@@ -364,6 +360,9 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 
 		if (!is_caches_only())
 			daemon_start();
+
+		if (is_notar_node())
+			notar_elect_next();
 	}
 
 	info->on_close = NULL;

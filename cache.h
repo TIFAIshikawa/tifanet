@@ -39,4 +39,6 @@ extern int cache_write(char *filename, char *buffer, size_t size);
 
 extern void cache_download(void);
 
+extern void cache_remove(void);
+
 #endif /* __TIFA_NODE_H */

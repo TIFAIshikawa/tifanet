@@ -68,6 +68,8 @@ static char *__network = "gamma";
 
 static const char *__bootstrap_server = "bootstrap.%s.tifa.network";
 
+static event_info_t *__peerlist_timer = NULL;
+
 static void peerlist_bootstrap(void);
 
 void
@@ -174,6 +176,8 @@ void peerlist_save()
 static void
 __peerlist_request_tick(event_info_t *info, event_flags_t eventtype)
 {
+	__peerlist_timer = NULL;
+
 	peerlist_request_broadcast();
 }
 
@@ -182,10 +186,13 @@ peerlist_request_broadcast(void)
 {
 	uint64_t delay;
 
+	if (__peerlist_timer)
+		return;
+
 	message_broadcast(OP_PEERLIST, NULL, 0, 0);
 
 	delay = randombytes_random() % 3600000;
-	timer_set(delay, __peerlist_request_tick, NULL);
+	__peerlist_timer = timer_set(delay, __peerlist_request_tick, NULL);
 }
 
 static void

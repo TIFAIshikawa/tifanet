@@ -29,6 +29,7 @@
 
 #include <stdio.h>
 #include <errno.h>
+#include <unistd.h>
 #include <string.h>
 #include <sodium.h>
 #include "log.h"
@@ -130,4 +131,13 @@ cache_download(void)
 		caches_only_download_callback);
 	message_send_random_with_callback(OP_GETNOTARS, NULL, 0, 0,
 		caches_only_download_callback);
+}
+
+void
+cache_remove(void)
+{
+	char tmp[MAXPATHLEN + 1];
+
+	unlink(config_path(tmp, "blocks/rxcache.bin"));
+	unlink(config_path(tmp, "blocks/notarscache.bin"));
 }

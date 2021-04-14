@@ -114,14 +114,18 @@ mmap_file(char *filename, off_t truncsize)
 	return (res);
 }
 
+void
+blockchain_load(void)
+{
+	__blocks = mmap_file("blocks/blocks0.bin", 2147483648);
+	__block_idxs = mmap_file("blocks/blocks0.idx", 536870912);
+	__last_block_idx = mmap_file("blocks/lastblock.idx", sizeof(big_idx_t));
+}
+
 static void *
 raw_block_last_load(size_t *blocksize)
 {
 	big_idx_t last_offset;
-
-	__blocks = mmap_file("blocks/blocks0.bin", 2147483648);
-	__block_idxs = mmap_file("blocks/blocks0.idx", 536870912);
-	__last_block_idx = mmap_file("blocks/lastblock.idx", sizeof(big_idx_t));
 
 	last_offset = __block_idxs[block_idx_last()];
 
@@ -250,9 +254,8 @@ add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt)
 			if (!cache_in_pacts(caches[i],
 			    block->pacts, block->num_pacts) &&
 			    !cache_in_raw_pacts(caches[i], rt, nrt)) {
-				pact_tx_add(t,
-					be64toh(caches[i]->block_idx),
-					be32toh(caches[i]->block_rx_idx));
+				pact_tx_add(t, caches[i]->block_idx,
+					caches[i]->block_rx_idx);
 				amount += be64toh(caches[i]->rx.amount);
 			}
 		}
@@ -828,6 +831,7 @@ __blockchain_update(event_info_t *info, event_flags_t eventflags)
 void
 blockchain_update()
 {
+	blockchain_set_updating(1);
 	if (!message_send_random_with_callback(OP_LASTBLOCKINFO, NULL, 0, 0,
 		__blockchain_update))
 		blockchain_update();
@@ -856,7 +860,8 @@ getblocks(big_idx_t target_idx)
 	cur_idx = block_idx_last();
 	if (cur_idx >= __getblocks_target_idx) {
 		__getblocks_target_idx = 0;
-		blockchain_update();
+		blockchain_set_updating(0);
+		notar_elect_next();
 		return;
 	}
 
@@ -864,10 +869,23 @@ getblocks(big_idx_t target_idx)
 	getblock(cur_idx);
 }
 
+void
+blocks_remove(void)
+{
+	char tmp[MAXPATHLEN + 1];
+
+	unlink(config_path(tmp, "blocks/blocks0.bin"));
+	unlink(config_path(tmp, "blocks/blocks0.idx"));
+	unlink(config_path(tmp, "blocks/lastblock.idx"));
+}
+
 static void
 __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 {
 	__block_poll_timer = NULL;
+
+	notar_elect_next();
+
 	message_broadcast(OP_GETBLOCK, NULL, 0, htobe64(block_idx_last() + 1));
 	block_poll_start();
 }
@@ -878,7 +896,7 @@ block_poll_start(void)
 	if (__block_poll_timer)
 		return;
 
-	timer_set(5000, __block_poll_tick, NULL);
+	__block_poll_timer = timer_set(5000, __block_poll_tick, NULL);
 }
 
 void
