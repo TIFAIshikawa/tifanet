@@ -50,15 +50,15 @@ enum opcodes {
 	OP_LASTBLOCKINFO,		// Get last block index.
 	OP_GETBLOCK,			// Get block X.
 
-	OP_NOTAR_ANNOUNCE,		// Announce self to the network,
+	OP_NOTARANNOUNCE,		// Announce self to the network,
 					// if we want to be a notar.
-	OP_NOTAR_DENOUNCE,		// Broadcast when notar gives false
+	OP_NOTARDENOUNCE,		// Broadcast when notar gives false
 					// information. This notar is
 					// subsequently blocked from
 					// the network, if the reason
 					// was correct.
 
-	OP_BLOCK_ANNOUNCE,		// Announce the next block to
+	OP_BLOCKANNOUNCE,		// Announce the next block to
 					// the network.
 
 	OP_PACT,			// Publish pact

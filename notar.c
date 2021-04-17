@@ -53,7 +53,6 @@ static public_key_t *__notars = NULL;
 static big_idx_t __notars_size = 0;
 static big_idx_t __notars_count = 0;
 static big_idx_t __next_notar_idx = 0;
-static time64_t __last_block_time = 0;
 static int __is_notar = FALSE;
 static big_idx_t __notars_last_block_idx = 0;
 
@@ -130,7 +129,7 @@ notar_announce(void)
 	if (__notar_announce_timer)
 		return;
 
-	message_broadcast(OP_NOTAR_ANNOUNCE, node_public_key(), sizeof(hash_t),
+	message_broadcast(OP_NOTARANNOUNCE, node_public_key(), sizeof(hash_t),
 		0);
 
 	delay = randombytes_random() % 3600000;
@@ -274,8 +273,6 @@ notar_raw_block_add(raw_block_t *raw_block)
 
 	if (block_idx(raw_block) % CACHE_HASH_BLOCK_INTERVAL == 0)
 		notarscache_save(raw_block->index);
- 
-	__last_block_time = be64toh(raw_block->time);
 }
 
 static void

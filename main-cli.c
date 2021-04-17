@@ -227,7 +227,6 @@ opt_blocks(int argc, char *argv[])
 	big_idx_t idx;
 	raw_block_t *raw_block;
 
-printf("cachesonly=%d\n", caches_only);
 	if (caches_only) {
 		printf("blocks option is not available on thin clients.\n");
 		return (EX_USAGE);
@@ -573,7 +572,6 @@ check_caches_only(void)
 		access(config_path(tmp, "blocks/blocks0.bin"), R_OK) == -1)
 		caches_only = TRUE;
 
-printf("cachesonly=%d\n", caches_only);
 	return (caches_only);
 }
 

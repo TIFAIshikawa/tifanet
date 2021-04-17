@@ -277,6 +277,7 @@ rxcache_create()
 
 	if (!(f = fopen(config_path(tmp, "blocks/rxcache.bin"), "w+")))
 		FAILTEMP("rxcache_create: %s", strerror(errno));
+	fclose(f);
 
 	for (big_idx_t idx = 0; (b = block_load(idx, &sz)); idx++)
 		rxcache_raw_block_add(b);

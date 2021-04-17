@@ -67,20 +67,20 @@ config_load()
 	FILE *f;
 	big_idx_t idx = 0;
 	char tmp[MAXPATHLEN + 1];
+	char tmp2[MAXPATHLEN + 1];
 
 	snprintf(__config_dir, MAXPATHLEN + 1, "%s/.tifanet", getenv("HOME"));
 	mkdir(__config_dir, 0700);
 	mkdir(config_path(tmp, "wallets"), 0700);
 	mkdir(config_path(tmp, "blocks"), 0700);
 
-/*
 	config_path(tmp, "blocks/blocks0.bin");
-	if (access(tmp, F_OK | R_OK | W_OK) != 0) {
+	config_path(tmp2, "blocks/rxcache.bin");
+	if (access(tmp, F_OK | R_OK | W_OK) != 0 && access(tmp2, F_OK) == -1) {
 		rewrite_file("blocks/blocks0.bin", __block0, sizeof(__block0));
 		rewrite_file("blocks/blocks0.idx", &idx, sizeof(big_idx_t));
 		rewrite_file("blocks/lastblock.idx", &idx, sizeof(big_idx_t));
 	}
-*/
 
 	config_path(tmp, "config");
 	__config_dir[MAXPATHLEN] = '\0';

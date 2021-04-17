@@ -58,7 +58,7 @@ pact_alloc(void)
 
 	res = malloc(sizeof(pact_t));
 #ifdef DEBUG_ALLOC
-	printf("+PACT %p\n", res);
+	lprintf("+PACT %p", res);
 #endif
 
 	res->time = time(NULL);
@@ -175,7 +175,7 @@ raw_pact_alloc(pact_t *t, size_t *size)
 		sizeof(pact_rx_t) * be32toh(t->num_rx);
 	res = malloc(*size);
 #ifdef DEBUG_ALLOC
-	printf("+RAWPACT %p\n", res);
+	lprintf("+RAWPACT %p", res);
 #endif
 
 	return (res);
@@ -184,10 +184,10 @@ raw_pact_alloc(pact_t *t, size_t *size)
 void
 raw_pact_free(raw_pact_t *raw_pact)
 {
-	free(raw_pact);
 #ifdef DEBUG_ALLOC
-	printf("-RAWPACT %p\n", raw_pact);
+	lprintf("-RAWPACT %p", raw_pact);
 #endif
+	free(raw_pact);
 }
 
 raw_pact_t *
@@ -224,10 +224,10 @@ pact_free(pact_t *pact)
 		free(pact->rx[i]);
 	free(pact->tx);
 	free(pact->rx);
-	free(pact);
 #ifdef DEBUG_ALLOC
-	printf("-PACT %p\n", pact);
+	lprintf("-PACT %p", pact);
 #endif
+	free(pact);
 }
 
 static int
@@ -264,7 +264,8 @@ pact_pending_add(raw_pact_t *pact)
 
 	if (!__pending_pacts_size) {
 		__pending_pacts_size = 10;
-		__pending_pacts = calloc(1, sizeof(raw_pact_t) * __pending_pacts_size);
+		__pending_pacts = calloc(1, sizeof(raw_pact_t *) *
+			__pending_pacts_size);
 	}
 
 	if (pact_tx_pending(pact))
@@ -277,7 +278,7 @@ pact_pending_add(raw_pact_t *pact)
 	if (i == __pending_pacts_size) {
 		__pending_pacts_size += 10;
 		__pending_pacts = realloc(__pending_pacts,
-			sizeof(raw_pact_t) * __pending_pacts_size);
+			sizeof(raw_pact_t *) * __pending_pacts_size);
 		for (small_idx_t n = i; n < __pending_pacts_size; n++)
 			__pending_pacts[n] = NULL;
 	}

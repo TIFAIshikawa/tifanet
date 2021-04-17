@@ -34,6 +34,8 @@
 #include <sys/param.h>
 #include <netinet/in.h>
 
+#define DEBUG_ALLOC 1
+#define NETWORK_DEBUG 1
 /*
  * Roadmap
  * ver: [eta date] description
@@ -45,12 +47,12 @@
  * 0.6: [2021-05-01] Denounce notar upon block timeout
  * 0.5: [2021-04-19] Robustify network: fault tolerance, e.g. fix possible
  *      infinite loops
- * 0.4: [2021-04-10] Thin client mode: run thin tifanetd with only caches
+ * 0.4: [2021-04-14] Thin client mode: run thin tifanetd with only caches
  * 0.3: [2021-04-01] Peerlist IPv4 & IPv6
  * 0.2: Connect to both IPv4 & IPv6
  * 0.1: Base functionality working, send & receive of pact type I
  */
-#define TIFA_VERSION_STR	"0.4.0"
+#define TIFA_VERSION_STR	"0.5.0"
 #define TIFA_NETWORK_VERSION	1
 
 /*     If you fork TIFAnet, change these defines!!!!     */

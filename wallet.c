@@ -68,7 +68,7 @@ wallets_load()
 	struct dirent *ent;
 	char tmp[MAXPATHLEN + 1];
 
-	__wallets = calloc(10, sizeof(wallet_t));
+	__wallets = calloc(10, sizeof(wallet_t *));
 	wallet_create(NULL);
 
 	if ((dir = opendir(config_path(tmp, "wallets")))) {

@@ -54,15 +54,14 @@
 #include "peerlist.h"
 #include "opcode_callback.h"
 
-#define NETWORK_DEBUG 1
 char *opcode_names[OP_MAXOPCODE] = {
 	"OP_NONE",
 	"OP_PEERLIST",
 	"OP_LASTBLOCKINFO",
 	"OP_GETBLOCK",
-	"OP_ANNOUNCE_NOTAR",
-	"OP_DENOUNCE_NOTAR",
-	"OP_ANNOUNCE_BLOCK",
+	"OP_ANNOUNCENOTAR",
+	"OP_DENOUNCENOTAR",
+	"OP_ANNOUNCEBLOCK",
 	"OP_TRANSACTION",
 	"OP_GETRXCACHE",
 	"OP_GETNOTARS"
@@ -83,7 +82,7 @@ static void socket_set_async(int fd)
         if ((opt = fcntl(fd, F_GETFL, 0)) == -1)
                 FAIL(EX_TEMPFAIL, "socket_set_async: fcntl(F_GETFL): %s",
                                   strerror(errno));
-        if ((opt = fcntl(fd, F_SETFL, opt | O_NONBLOCK)) == -1)
+        if (fcntl(fd, F_SETFL, opt | O_NONBLOCK) == -1)
                 FAIL(EX_TEMPFAIL, "socket_set_async: fcntl(F_SETFL): %s",
                                   strerror(errno));
 }
@@ -139,6 +138,8 @@ socket_create(int domain)
 		lprintf("socket_create: socket(%d): %s",
 			domain, strerror(errno));
 
+	socket_set_async(res);
+
 	return (res);
 }
 
@@ -163,8 +164,6 @@ __listen_socket_open(struct sockaddr_storage *addr)
 		FAILBOOL("listen_socket_open: setsockopt: %s", strerror(errno));
 	}
 
-	socket_set_async(fd);
-
 	if (bind(fd, (struct sockaddr *)addr, len) == -1) {
 		close(fd);
 		FAILBOOL("listen_socket_open: bind: %s", strerror(errno));
@@ -176,7 +175,7 @@ __listen_socket_open(struct sockaddr_storage *addr)
 	}
 
 	__listen_info = event_add(fd, EVENT_READ, accept_notar_connection,
-				NULL);
+				NULL, 0);
 
 	lprintf("listening for connections...");
 
@@ -211,7 +210,8 @@ void
 accept_notar_connection(event_info_t *info, event_flags_t eventtype)
 {
 	struct sockaddr_storage addr;
-	network_event_t *nev;
+	network_event_t nev;
+	event_info_t *event;
 	socklen_t len;
 	int fd;
 
@@ -224,23 +224,25 @@ accept_notar_connection(event_info_t *info, event_flags_t eventtype)
 
 	socket_set_timeout(fd, 10);
 
-	nev = calloc(1, sizeof(network_event_t));
-	bcopy(&addr, &nev->remote_addr, len);
-	nev->remote_addr_len = len;
-	nev->type = NETWORK_EVENT_TYPE_SERVER;
-	event_add(fd, EVENT_READ | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
-		message_read, nev);
+	bzero(&nev, sizeof(network_event_t));
+#ifdef DEBUG_ALLOC
+	lprintf("+NETWORK_EVENT %p", nev);
+#endif
+	bcopy(&addr, &nev.remote_addr, len);
+	nev.remote_addr_len = len;
+	nev.type = NETWORK_EVENT_TYPE_SERVER;
+	nev.state = NETWORK_EVENT_STATE_HEADER;
+	//nev.flags = EVENT_FREE_PAYLOAD;
+	event = event_add(fd, EVENT_READ | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
+		message_read, &nev, sizeof(network_event_t));
+lprintf("ACCEPT %p", event);
+lprintf("accept %p %d", event, nev.state);
+	event->on_close = message_event_on_close;
 }
 
 void
 message_cancel(event_info_t *info)
 {
-	network_event_t *nev;
-
-	nev = info->payload;
-//	if (nev->userdata)
-//		free(nev->userdata);
-
 	event_remove(info);
 }
 
@@ -248,18 +250,22 @@ static void
 message_event_on_close(event_info_t *info, event_flags_t flags)
 {
 	network_event_t *nev;
-	message_t *msg;
 
 	nev = info->payload;
-	msg = &nev->message_header;
+//	if (nev->on_close)
+//		nev->on_close(info, flags);
 
-	if (nev->on_close)
-		nev->on_close(info, flags);
+#ifdef DEBUG_ALLOC
+	lprintf("-NETWORK_EVENT %p", nev);
+#endif
+lprintf("-FREE %p", info);
+	free(nev);
 }
 
 static int
 message_header_validate(event_info_t *info)
 {
+	char tmp[INET6_ADDRSTRLEN + 1];
 	network_event_t *nev;
 	small_idx_t size;
 	message_t *msg;
@@ -287,6 +293,10 @@ message_header_validate(event_info_t *info)
 			return (FALSE);
 		}
 	}
+#ifdef NETWORK_DEBUG
+	lprintf("received message %s from %s", opcode_names[msg->opcode],
+		peername(&nev->remote_addr, tmp));
+#endif
 
 	return (TRUE);
 }
@@ -305,6 +315,7 @@ message_read(event_info_t *info, event_flags_t eventtype)
 
 	nev = info->payload;
 	msg = &nev->message_header;
+lprintf("readmes: %p state=%d", info, nev->state);
 	switch (nev->state) {
 	case NETWORK_EVENT_STATE_HEADER:
 		ptr = (void *)&nev->message_header + nev->read_idx;
@@ -349,8 +360,8 @@ message_read(event_info_t *info, event_flags_t eventtype)
 		}
 		break;
 	default:
-		FAIL(EX_SOFTWARE, "message_read: illegal state: %d\n",
-		      nev->state);
+		FAIL(EX_SOFTWARE, "message_read %p: illegal state: %d\n",
+		      info, nev->state);
 	}
 }
 
@@ -404,17 +415,18 @@ message_write(event_info_t *info, event_flags_t eventtype)
 		}
 		break;
 	default:
-		FAIL(EX_SOFTWARE, "message_write: illegal state: %d\n",
-		      nev->state);
+		FAIL(EX_SOFTWARE, "message_write %p: illegal state: %d\n",
+		      info, nev->state);
 	}
 }
 
 static event_info_t *
 request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 {
+	char tmp[INET6_ADDRSTRLEN + 1];
 	struct sockaddr_in6 *a6;
 	struct sockaddr_in *a4;
-	network_event_t *nev;
+	network_event_t nev;
 	event_info_t *res;
 	socklen_t len;
 	int fd;
@@ -438,35 +450,37 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 		FAIL(EX_TEMPFAIL, "request_send: socket: %s\n",
 			strerror(errno));
 
-// TODO: don't use async connect() for now	socket_set_async(fd);
-
 	if (connect(fd, (struct sockaddr *)addr, len) == -1) {
 		// EINPROGRESS will be handled by event loop. Other errors
 		// are fatal. Don't log common errors though.
 		if (errno != EINPROGRESS) {
 //			if (errno != ECONNREFUSED && errno != ECONNRESET &&
 //				errno != EINTR)
-				lprintf("request_send: connect: %s",
-					strerror(errno));
+				lprintf("request_send: connect %s: %s",
+					peername(addr, tmp), strerror(errno));
 			close(fd);
 			peerlist_remove(addr);
 			return (NULL);
 		}
 	}
 
-	nev = calloc(1, sizeof(network_event_t));
-	nev->type = NETWORK_EVENT_TYPE_CLIENT;
-	bcopy(message, &nev->message_header, sizeof(message_t));
-	nev->userdata = payload;
-	bcopy(addr, &nev->remote_addr, len);
-	nev->remote_addr_len = len;
-	nev->userdata_size = be32toh(message->payload_size);
+	bzero(&nev, sizeof(network_event_t));
+#ifdef DEBUG_ALLOC
+	lprintf("+NETWORK_EVENT %p", nev);
+#endif
+	nev.type = NETWORK_EVENT_TYPE_CLIENT;
+	nev.state = NETWORK_EVENT_STATE_HEADER;
+	bcopy(message, &nev.message_header, sizeof(message_t));
+	nev.userdata = payload;
+	bcopy(addr, &nev.remote_addr, len);
+	nev.remote_addr_len = len;
+	nev.userdata_size = be32toh(message->payload_size);
+	//nev.flags = EVENT_FREE_PAYLOAD;
 
 	res = event_add(fd, EVENT_WRITE | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
-			message_write, nev);
+			message_write, &nev, sizeof(network_event_t));
+lprintf("REQSEND %p", res);
 	res->on_close = message_event_on_close;
-
-	message_write(res, EVENT_WRITE);
 
 	socket_set_timeout(fd, 10);
 
@@ -489,10 +503,6 @@ network_message(event_info_t *info)
 static void
 message_init(message_t *msg, opcode_t opcode, small_idx_t size, userinfo_t info)
 {
-	time64_t t;
-
-	t = time(NULL);
-
 	bzero(msg, sizeof(message_t));
 	bcopy(TIFA_IDENT, msg->magic, sizeof(magic_t));
 	msg->version = TIFA_NETWORK_VERSION;
@@ -567,7 +577,6 @@ is_local_interface_address(struct sockaddr_storage *addr)
 	struct sockaddr_in *ifa4, *a4;
 	struct sockaddr_in6 *ifa6, *a6;
 
-return 0;
 	if (!__ifaddrs) {
 		if (getifaddrs(&__ifaddrs) == -1) {
 			lprintf("is_local_interface_address: getifaddrs: %s",
@@ -659,18 +668,22 @@ message_broadcast_with_callback(opcode_t opcode, void *payload,
 {
 	event_info_t *req;
 	small_idx_t n;
+	size_t max;
 	size_t res;
 
-	n = MIN(100, peerlist.list4_size + peerlist.list6_size);
-	for (res = 0; res < n; res++) {
+	max = peerlist.list4_size + peerlist.list6_size;
+	n = MIN(100, max);
+
+	for (res = 0; res < n;) {
 		if ((req = message_send_random_with_callback(opcode,
 			payload, size, info, callback))) {
-			res++;
+//			res++;
 		}
 
 		// recalculate this, as the list might have changed due
 		// to a peer being removed from the list if it did not respond
 		n = MIN(100, peerlist.list4_size + peerlist.list6_size);
+res++;
 	}
 
 	return (res);
@@ -679,13 +692,19 @@ message_broadcast_with_callback(opcode_t opcode, void *payload,
 void
 daemon_start(void)
 {
+	size_t sz;
+
 	if (__listen_info)
 		return;
 
 	lprintf("Starting daemon...");
 
+	notar_raw_block_add(raw_block_last(&sz));
+	notar_elect_next();
+
 	listen_socket_open();
 	notar_start();
+	block_poll_start();
 }
 
 static void
@@ -697,8 +716,6 @@ __getblock_again(event_info_t *info, event_flags_t eventflags)
 void
 getblock(big_idx_t index)
 {
-	char tmp[INET6_ADDRSTRLEN + 1];
-	network_event_t *nev;
 	event_info_t *info;
 
 	if (!(info = message_send_random(OP_GETBLOCK, NULL, 0,
@@ -706,8 +723,4 @@ getblock(big_idx_t index)
 		__getblock_again(info, EVENT_READ);
 		return;
 	}
-
-	nev = info->payload;
-	lprintf("asking host %s for block %ju",
-		peername(&nev->remote_addr, tmp), index);
 }

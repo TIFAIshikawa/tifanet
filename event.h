@@ -58,11 +58,14 @@ struct __event_info {
 };
 
 extern void event_handler_init(void);
-extern event_info_t *event_add(int fd, event_flags_t eventflags, event_callback_t callback, void *payload);
-extern void event_update(event_info_t *event, event_flags_t to_remove, event_flags_t to_add);
+extern event_info_t *event_add(int fd, event_flags_t eventflags,
+	event_callback_t callback, void *payload, size_t payload_size);
+extern void event_update(event_info_t *event, event_flags_t to_remove,
+	event_flags_t to_add);
 extern void event_remove(event_info_t *event);
 
-extern event_info_t *timer_set(uint64_t msec_delay, event_callback_t callback, void *payload);
+extern event_info_t *timer_set(uint64_t msec_delay, event_callback_t callback,
+	void *payload);
 extern void timer_cancel(event_info_t *event);
 extern void timer_remove(event_info_t *event);
 

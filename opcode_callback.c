@@ -72,15 +72,15 @@ typedef struct  __attribute__((__packed__)) __op_pact_response {
 void op_peerlist(event_info_t *info);
 void op_lastblockinfo(event_info_t *info);
 void op_getblock(event_info_t *info);
-void op_notar_announce(event_info_t *info);
-void op_notar_denounce(event_info_t *info);
-void op_block_announce(event_info_t *info);
+void op_notarannounce(event_info_t *info);
+void op_notardenounce(event_info_t *info);
+void op_blockannounce(event_info_t *info);
 void op_notarproof(event_info_t *info);
 void op_pact(event_info_t *info);
 void op_getrxcache(event_info_t *info);
 void op_getnotars(event_info_t *info);
 
-int op_block_announce_ignore(event_info_t *info);
+int op_blockannounce_ignore(event_info_t *info);
 
 void op_peerlist_server(event_info_t *info, network_event_t *nev);
 void op_peerlist_client(event_info_t *info, network_event_t *nev);
@@ -102,7 +102,7 @@ opcode_ignore_callback_t opcode_ignore_callbacks[OP_MAXOPCODE] = {
 	NULL,			// OP_GETBLOCK
 	NULL,			// OP_NOTAR_ANNOUNCE
 	NULL,			// OP_NOTAR_DENOUNCE
-	op_block_announce_ignore, // OP_BLOCK_ANNOUNCE
+	op_blockannounce_ignore,// OP_BLOCKANNOUNCE
 	NULL,			// OP_PACT
 	NULL,			// OP_GETRXCACHE
 	NULL,			// OP_GETNOTARS
@@ -113,9 +113,9 @@ opcode_callback_t opcode_callbacks[OP_MAXOPCODE] = {
 	op_peerlist,		// OP_PEERLIST
 	op_lastblockinfo,	// OP_LASTBLOCKINFO
 	op_getblock,		// OP_GETBLOCK
-	op_notar_announce,	// OP_NOTAR_ANNOUNCE
-	op_notar_denounce,	// OP_NOTAR_DENOUNCE
-	op_block_announce,	// OP_BLOCK_ANNOUNCE
+	op_notarannounce,	// OP_NOTARANNOUNCE
+	op_notardenounce,	// OP_NOTARDENOUNCE
+	op_blockannounce,	// OP_BLOCKANNOUNCE
 	op_pact,		// OP_PACT
 	op_getrxcache,		// OP_GETRXCACHE
 	op_getnotars,		// OP_GETNOTARS
@@ -146,10 +146,10 @@ opcode_payload_size_valid(message_t *msg, int direction)
 			return (be32toh(msg->payload_size) == sizeof(big_idx_t));
 		else
 			return (be32toh(msg->payload_size) >= 256 && be32toh(msg->payload_size) < MAXPACKETSIZE);
-	case OP_NOTAR_ANNOUNCE:
-	case OP_NOTAR_DENOUNCE:
+	case OP_NOTARANNOUNCE:
+	case OP_NOTARDENOUNCE:
 		return (be32toh(msg->payload_size) == sizeof(public_key_t));
-	case OP_BLOCK_ANNOUNCE:
+	case OP_BLOCKANNOUNCE:
 		return (be32toh(msg->payload_size) >= 256 && be32toh(msg->payload_size) < MAXPACKETSIZE);
 	case OP_PACT:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
@@ -230,6 +230,9 @@ op_peerlist_server(event_info_t *info, network_event_t *nev)
 
 	buf = malloc(size);
 	response = (op_peerlist_response_t *)buf;
+#ifdef DEBUG_ALLOC
+	lprintf("+USERDATA %p PEERLIST", response);
+#endif
 
 	response->peers_ipv4_count = htobe32(peerlist.list4_size);
 	response->peers_ipv6_count = htobe32(peerlist.list6_size);
@@ -317,6 +320,9 @@ op_lastblockinfo_server(event_info_t *info, network_event_t *nev)
 	raw_block_hash(last, size, block_hash);
 
 	blockinfo = malloc(sizeof(op_lastblockinfo_response_t));
+#ifdef DEBUG_ALLOC
+	lprintf("+USERDATA %p BLOCKINFO", blockinfo);
+#endif
 	blockinfo->index = last->index;
 	bcopy(block_hash, blockinfo->hash, sizeof(hash_t));
 	bcopy(last->prev_block_hash, blockinfo->prev_block_hash,
@@ -350,6 +356,9 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 	lprintf("last block is #%ju", rmt_idx);
 
 	if (lcl_idx < rmt_idx) {
+		blockchain_set_updating(1);
+		notar_elect_next();
+		block_poll_start();
 		getblocks(rmt_idx);
 	} else {
 		lprintf("fully synchronized");
@@ -360,9 +369,6 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 
 		if (!is_caches_only())
 			daemon_start();
-
-		if (is_notar_node())
-			notar_elect_next();
 	}
 
 	info->on_close = NULL;
@@ -430,7 +436,7 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 }
 
 void
-op_notar_announce(event_info_t *info)
+op_notarannounce(event_info_t *info)
 {
 	network_event_t *nev;
 	public_key_t new_notar;
@@ -443,13 +449,13 @@ op_notar_announce(event_info_t *info)
 }
 
 void
-op_notar_denounce(event_info_t *info)
+op_notardenounce(event_info_t *info)
 {
 printf("denounce\n");
 }
 
 void
-op_block_announce(event_info_t *info)
+op_blockannounce(event_info_t *info)
 {
 	network_event_t *nev;
 	raw_block_t *block;
@@ -471,7 +477,7 @@ op_block_announce(event_info_t *info)
 		// get block from block storage (which is permanent, whereas
 		// nev->userdata will be freed), then redistribute
         	block = block_load(index, &size);
-        	message_broadcast(OP_BLOCK_ANNOUNCE, block, size,
+        	message_broadcast(OP_BLOCKANNOUNCE, block, size,
 			htobe64(index));
 	}
 
@@ -479,7 +485,7 @@ op_block_announce(event_info_t *info)
 }
 
 int
-op_block_announce_ignore(event_info_t *info)
+op_blockannounce_ignore(event_info_t *info)
 {
 	message_t *msg;
 	int res;
@@ -531,6 +537,9 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 	size = pact_size(t);
 
 	response = calloc(1, sizeof(op_pact_response_t));
+#ifdef DEBUG_ALLOC
+	lprintf("+USERDATA %p PACT", response);
+#endif
 	pact_hash(t, response->pact_hash);
 
 	if (size != be32toh(msg->payload_size)) {
@@ -612,6 +621,9 @@ op_getrxcache_server(event_info_t *info, network_event_t *nev)
 	fseek(f, 0, SEEK_SET);
 	if (!(nev->userdata = malloc(size)))
 		return message_cancel(info);
+#ifdef DEBUG_ALLOC
+	lprintf("+USERDATA %p RXCACHE", nev->userdata);
+#endif
 	if (fread(nev->userdata, 1, size, f) != size) {
 		fclose(f);
 		return message_cancel(info);
@@ -635,8 +647,6 @@ void
 op_getrxcache_client(event_info_t *info, network_event_t *nev)
 {
 	message_t *msg;
-
-	msg = network_message(info);
 
 	msg = network_message(info);
 	cache_write("rxcache", nev->userdata, be32toh(msg->payload_size));
@@ -679,6 +689,9 @@ op_getnotars_server(event_info_t *info, network_event_t *nev)
 	fseek(f, 0, SEEK_SET);
 	if (!(nev->userdata = malloc(size)))
 		return message_cancel(info);
+#ifdef DEBUG_ALLOC
+	lprintf("+USERDATA %p NOTARS", nev->userdata);
+#endif
 	if (fread(nev->userdata, 1, size, f) != size) {
 		fclose(f);
 		return message_cancel(info);

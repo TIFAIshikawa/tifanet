@@ -117,8 +117,11 @@ mmap_file(char *filename, off_t truncsize)
 void
 blockchain_load(void)
 {
-	__blocks = mmap_file("blocks/blocks0.bin", 2147483648);
-	__block_idxs = mmap_file("blocks/blocks0.idx", 536870912);
+	size_t sz;
+
+	sz = 2147483648;
+	__blocks = mmap_file("blocks/blocks0.bin", sz);
+	__block_idxs = mmap_file("blocks/blocks0.idx", (sz / 256) * 8);
 	__last_block_idx = mmap_file("blocks/lastblock.idx", sizeof(big_idx_t));
 }
 
@@ -152,7 +155,7 @@ block_alloc()
 	res->pacts[0] = NULL; // pact 0 will be added later
 
 #ifdef DEBUG_ALLOC
-	printf("+BLOCK %p\n", res);
+	lprintf("+BLOCK %p", res);
 #endif
 
 	return (res);
@@ -405,6 +408,7 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	int err;
 	void *crx;
 	hash_t pbh;
+	time_t ct, bt;
 	big_idx_t idx;
 	signature_t sig;
 	size_t tbs, size, scount;
@@ -421,6 +425,14 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	if (blocksize != size) {
 		lprintf("block with index %ju has illegal size: %d vs %d",
 			block_idx(raw_block), size, blocksize);
+		return (FALSE);
+	}
+
+	ct = time(NULL);
+	bt = be64toh(raw_block->time);
+	if (bt > ct) {
+		lprintf("block with index %ju has time in future: %ld vs %ld",
+			bt, ct);
 		return (FALSE);
 	}
 
@@ -454,7 +466,6 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 			return (FALSE);
 		}
 
-		notar_elect_next();
 		// check notar
 		if (pubkey_compare(notar_next(), raw_block->notar) != 0) {
 			lprintf("illegal notar for block index %ju",
@@ -551,9 +562,6 @@ raw_block_process(raw_block_t *raw_block, size_t blocksize)
 	raw_block_write(raw_block, blocksize);
 
 	notar_elect_next();
-
-//	if (!blockchain_is_updating())
-//		block_poll_start();
 }
 
 void
@@ -579,7 +587,6 @@ block_finalize(block_t *block, size_t *blocksize)
 {
 	size_t bs;
 	size_t size;
-	time64_t tm;
 	char *curbuf;
 	small_idx_t rts;
 	pact_t *t;
@@ -594,8 +601,6 @@ block_finalize(block_t *block, size_t *blocksize)
 		bs += sizeof(public_key_t);
 
 	max_tr = max_rtr = 0;
-
-	tm = time(NULL);
 
 	rtl = pacts_pending(&rts);
 
@@ -727,10 +732,10 @@ block_free(block_t *block)
 		if (block->pacts[i])
 			pact_free(block->pacts[i]);
 	free(block->pacts);
-	free(block);
 #ifdef DEBUG_ALLOC
-	printf("-BLOCK %p\n", block);
+	lprintf("-BLOCK %p", block);
 #endif
+	free(block);
 }
 
 raw_pact_t *
@@ -819,7 +824,7 @@ raw_block_broadcast(big_idx_t index)
 	size_t size;
 
 	block = block_load(index, &size);
-	message_broadcast(OP_BLOCK_ANNOUNCE, block, size, htobe64(index));
+	message_broadcast(OP_BLOCKANNOUNCE, block, size, htobe64(index));
 }
 
 static void
@@ -861,7 +866,6 @@ getblocks(big_idx_t target_idx)
 	if (cur_idx >= __getblocks_target_idx) {
 		__getblocks_target_idx = 0;
 		blockchain_set_updating(0);
-		notar_elect_next();
 		return;
 	}
 
@@ -882,11 +886,16 @@ blocks_remove(void)
 static void
 __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 {
+	time_t t;
+	size_t sz;
+
 	__block_poll_timer = NULL;
 
-	notar_elect_next();
+	t = time(NULL);
+	if (t > be64toh(raw_block_last(&sz)->time) + 5)
+		message_broadcast(OP_GETBLOCK, NULL, 0,
+			htobe64(block_idx_last() + 1));
 
-	message_broadcast(OP_GETBLOCK, NULL, 0, htobe64(block_idx_last() + 1));
 	block_poll_start();
 }
 
@@ -896,7 +905,7 @@ block_poll_start(void)
 	if (__block_poll_timer)
 		return;
 
-	__block_poll_timer = timer_set(5000, __block_poll_tick, NULL);
+	__block_poll_timer = timer_set(3000, __block_poll_tick, NULL);
 }
 
 void
