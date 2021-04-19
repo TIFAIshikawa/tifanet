@@ -238,15 +238,14 @@ notar_elect_next(void)
 void
 notarscache_save(big_idx_t block_idx)
 {
-	char tmp[MAXPATHLEN + 1];
 	big_idx_t size;
 	size_t wsize;
 	FILE *f;
 
 	__notars_last_block_idx = be64toh(block_idx);
 	lprintf("saving notars @ block %ju...", __notars_last_block_idx);
-	config_path(tmp, "blocks/notarscache.bin");
-	if (!(f = fopen(tmp, "w+")))
+
+	if (!(f = config_fopen("blocks/notarscache.bin", "w+")))
 		FAILTEMP("notarscache_save: %s", strerror(errno));
 
 	if (fwrite(&block_idx, 1, sizeof(big_idx_t), f) != sizeof(big_idx_t))
@@ -333,7 +332,6 @@ void
 notarscache_load(void)
 {
 	FILE *f;
-	char tmp[MAXPATHLEN + 1];
 
 	if (__notars)
 		return;
@@ -341,8 +339,7 @@ notarscache_load(void)
 	__pending_notars = calloc(1, sizeof(public_key_t) * 100);
 	__pending_notars_size = 100;
 
-	config_path(tmp, "blocks/notarscache.bin");
-	if (!(f = fopen(tmp, "r"))) {
+	if (!(f = config_fopen("blocks/notarscache.bin", "r"))) {
 		notarscache_create();
 	} else {
 		notarscache_read(f);

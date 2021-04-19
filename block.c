@@ -99,16 +99,15 @@ mmap_file(char *filename, off_t truncsize)
 {
 	int fd;
 	void *res;
-	char tmp[MAXPATHLEN + 1];
+	char file[MAXPATHLEN + 1];
 
-	if ((fd = open(config_path(tmp,
-		filename), O_CREAT | O_RDWR)) == -1)
-		FAILTEMP("open %s: %s\n", tmp, strerror(errno));
+	if ((fd = open(config_path_r(file, filename), O_CREAT | O_RDWR)) == -1)
+		FAILTEMP("open %s: %s\n", file, strerror(errno));
 	ftruncate(fd, truncsize);
 	if ((res = mmap(0, truncsize,
 		PROT_READ | PROT_WRITE, MAP_NOCORE | MAP_SHARED,
 		fd, 0)) == MAP_FAILED)
-		FAILTEMP("mmap %s: %s\n", tmp, strerror(errno));
+		FAILTEMP("mmap %s: %s\n", file, strerror(errno));
 	close(fd);
 
 	return (res);
@@ -827,19 +826,17 @@ raw_block_broadcast(big_idx_t index)
 	message_broadcast(OP_BLOCKANNOUNCE, block, size, htobe64(index));
 }
 
-static void
-__blockchain_update(event_info_t *info, event_flags_t eventflags)
-{
-	blockchain_update();
-}
-
 void
 blockchain_update()
 {
 	blockchain_set_updating(1);
-	if (!message_send_random_with_callback(OP_LASTBLOCKINFO, NULL, 0, 0,
-		__blockchain_update))
+	if (!message_send_random(OP_LASTBLOCKINFO, NULL, 0, 0)) {
+#ifdef NETWORK_DEBUG
+		lprintf("blockchain_update: failed retrieving last block, "
+			"trying again...");
+#endif
 		blockchain_update();
+	}
 }
 
 void
@@ -876,11 +873,9 @@ getblocks(big_idx_t target_idx)
 void
 blocks_remove(void)
 {
-	char tmp[MAXPATHLEN + 1];
-
-	unlink(config_path(tmp, "blocks/blocks0.bin"));
-	unlink(config_path(tmp, "blocks/blocks0.idx"));
-	unlink(config_path(tmp, "blocks/lastblock.idx"));
+	config_unlink("blocks/blocks0.bin");
+	config_unlink("blocks/blocks0.idx");
+	config_unlink("blocks/lastblock.idx");
 }
 
 static void

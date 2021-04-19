@@ -43,10 +43,8 @@ uint8_t loglevel = 1;
 void
 openlog()
 {
-	char file[MAXPATHLEN + 1];
-
 	if (!__logfile)
-		__logfile = fopen(config_path(file, "tifanetd.log"), "a+");
+		__logfile = config_fopen("tifanetd.log", "a+");
 }
 
 void

@@ -59,14 +59,12 @@ cache_hash(hash_t resulthash)
 int
 cache_write(char *filename, char *buffer, size_t size)
 {
-	char tmp0[MAXPATHLEN + 1];
-	char tmp1[MAXPATHLEN + 1];
+	char tmp[MAXPATHLEN + 1];
 	size_t w, wr;
 	FILE *f;
  
-	snprintf(tmp0, MAXPATHLEN, "blocks/%s.bin", filename);
-	config_path(tmp1, tmp0);
-	if (!(f = fopen(tmp1, "w+")))
+	snprintf(tmp, MAXPATHLEN, "blocks/%s.bin", filename);
+	if (!(f = config_fopen(tmp, "w+")))
 		return (FALSE);
 
 	for (w = wr = 0; wr < size && w >= 0; wr += w)
@@ -97,9 +95,6 @@ caches_get_blocks(event_info_t *info, event_flags_t eventflags)
 			notars_last_block_idx());
 		//return cache_download();
 	}
-
-//	blockchain_set_updating(1);
-//	blockchain_update();
 }
 
 static void
@@ -136,8 +131,6 @@ cache_download(void)
 void
 cache_remove(void)
 {
-	char tmp[MAXPATHLEN + 1];
-
-	unlink(config_path(tmp, "blocks/rxcache.bin"));
-	unlink(config_path(tmp, "blocks/notarscache.bin"));
+	config_unlink("blocks/rxcache.bin");
+	config_unlink("blocks/notarscache.bin");
 }

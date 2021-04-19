@@ -116,7 +116,8 @@ typedef struct __network_event {
 	event_callback_t on_close;
 } network_event_t;
 
-extern char *peername(struct sockaddr_storage *addr, char *dst);
+extern char *peername(struct sockaddr_storage *addr);
+extern char *peername_r(struct sockaddr_storage *addr, char *dst);
 
 extern int network_is_ipv6_capable(void);
 

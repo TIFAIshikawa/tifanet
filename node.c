@@ -98,7 +98,7 @@ node_keypair_load()
 {
 	char file[MAXPATHLEN + 1];
 
-	if (access(config_path(file, "node_identity.keypair"), F_OK) == -1) {
+	if (access(config_path_r(file, "node_identity.keypair"), F_OK) == -1) {
 		__node_key = keypair_create();
 		keypair_save(__node_key, file);
 		generate_node_name();

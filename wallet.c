@@ -66,12 +66,11 @@ wallets_load()
 {
 	DIR *dir;
 	struct dirent *ent;
-	char tmp[MAXPATHLEN + 1];
 
 	__wallets = calloc(10, sizeof(wallet_t *));
 	wallet_create(NULL);
 
-	if ((dir = opendir(config_path(tmp, "wallets")))) {
+	if ((dir = opendir(config_path("wallets")))) {
 		while ((ent = readdir(dir))) {
 			if (ent->d_type & DT_DIR && ent->d_name[0] != '.')
 				wallet_add(wallet_load(ent->d_name));
@@ -98,7 +97,7 @@ wallet_path(const char *name, char *buffer)
 
 	snprintf(tmp, MAXPATHLEN + 1, "wallets/%s", name);
 
-	return (config_path(buffer, tmp));
+	return (config_path_r(buffer, tmp));
 }
 
 
@@ -109,7 +108,7 @@ address_path(const char *name, const char *address_name, char *buffer)
 
 	snprintf(tmp, MAXPATHLEN + 1, "wallets/%s/%s", name, address_name);
 
-	return (config_path(buffer, tmp));
+	return (config_path_r(buffer, tmp));
 }
 
 int

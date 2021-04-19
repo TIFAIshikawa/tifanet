@@ -74,7 +74,7 @@ event_info_alloc(int ident, event_callback_t callback, void *payload,
 {
 	event_info_t *res;
 
-	res = malloc(sizeof(event_info_t) + payload_size);
+	res = calloc(1, sizeof(event_info_t) + payload_size);
 #ifdef DEBUG_ALLOC
 	lprintf("+EVENT %p", res);
 #endif
@@ -82,8 +82,6 @@ event_info_alloc(int ident, event_callback_t callback, void *payload,
 	res->ident = ident;
 	res->time = time(NULL);
 	res->callback = callback;
-	res->payload = NULL;
-	res->on_close = NULL;
 
 	if (payload) {
 		if (payload_size) {
@@ -263,7 +261,6 @@ event_update(event_info_t *info, event_flags_t to_remove, event_flags_t to_add)
 void
 event_remove(event_info_t *info)
 {
-lprintf("*EVREM %p", info);
 	if (info->flags & EVENT_TIMER)
 		FAIL(EX_SOFTWARE, "event_remove: info %p is a timer", info);
 
@@ -280,10 +277,8 @@ event_free(event_info_t *info)
 
 	sz = (uint8_t *)info->payload - (uint8_t *)info;
 	if (info->payload && sz != sizeof(event_info_t) &&
-		info->flags & EVENT_FREE_PAYLOAD) {
-lprintf("%p FREE %p", info, info->payload);
+		info->flags & EVENT_FREE_PAYLOAD)
 		free(info->payload);
-}
 
 #ifdef DEBUG_ALLOC
 	lprintf("-EVENT %p", info);
@@ -379,12 +374,10 @@ event_process(time_t t, struct kevent event)
 
 		if (info->flags & EVENT_TIMEOUT) {
 			if (t - info->time < 30) {
-lprintf("CALLBACK %p", info);
 				info->callback(info, eventflags);
 			} else
 				event_remove(info);
 		} else {
-lprintf("CALLBACK %p", info);
 			info->callback(info, eventflags);
 		}
 	}
