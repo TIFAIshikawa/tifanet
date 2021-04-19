@@ -188,7 +188,10 @@ timer_set(uint64_t msec_delay, event_callback_t callback, void *payload)
 void
 timer_cancel(event_info_t *info)
 {
+#ifdef __linux__
+#else
 	struct kevent event;
+#endif
 
 	if (!(info->flags & EVENT_TIMER))
 		FAIL(EX_SOFTWARE, "timer_cancel: info %p is not a timer", info);

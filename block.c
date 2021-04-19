@@ -105,11 +105,12 @@ mmap_file(char *filename, off_t truncsize)
 		filename), O_CREAT | O_RDWR)) == -1)
 		FAILTEMP("open %s: %s\n", tmp, strerror(errno));
 	ftruncate(fd, truncsize);
-	if ((res = mmap(0, truncsize,
-		PROT_READ | PROT_WRITE, MAP_NOCORE | MAP_SHARED,
+	if ((res = mmap(0, truncsize, PROT_READ | PROT_WRITE, MAP_SHARED,
 		fd, 0)) == MAP_FAILED)
 		FAILTEMP("mmap %s: %s\n", tmp, strerror(errno));
 	close(fd);
+
+	madvise(res, truncsize, MADV_DONTDUMP);
 
 	return (res);
 }
