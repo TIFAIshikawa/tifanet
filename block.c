@@ -104,12 +104,19 @@ mmap_file(char *filename, off_t truncsize)
 	if ((fd = open(config_path_r(file, filename), O_CREAT | O_RDWR)) == -1)
 		FAILTEMP("open %s: %s\n", file, strerror(errno));
 	ftruncate(fd, truncsize);
-	if ((res = mmap(0, truncsize, PROT_READ | PROT_WRITE, MAP_SHARED,
+	if ((res = mmap(0, truncsize, PROT_READ | PROT_WRITE,
+#ifdef __linux__
+		MAP_SHARED,
+#else
+		MAP_SHARED | MAP_NOCORE,
+#endif
 		fd, 0)) == MAP_FAILED)
 		FAILTEMP("mmap %s: %s\n", file, strerror(errno));
 	close(fd);
 
+#ifdef __linux__
 	madvise(res, truncsize, MADV_DONTDUMP);
+#endif
 
 	return (res);
 }

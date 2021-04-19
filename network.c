@@ -345,6 +345,9 @@ message_read(event_info_t *info, event_flags_t eventtype)
 				return message_cancel(info);
 
 			nev->userdata = malloc(be32toh(msg->payload_size));
+#ifdef DEBUG_ALLOC
+			lprintf("+USERDATA %p MESSAGE_READ", nev->userdata);
+#endif
 			if (be16toh(msg->flags) & MESSAGE_FLAG_PEER)
 				peerlist_add(&nev->remote_addr);
 			nev->read_idx = 0;
@@ -480,6 +483,9 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 	nev.state = NETWORK_EVENT_STATE_HEADER;
 	bcopy(message, &nev.message_header, sizeof(message_t));
 	nev.userdata = payload;
+#ifdef DEBUG_ALLOC
+	lprintf("+USERDATA %p REQUEST_SEND", nev.userdata);
+#endif
 	bcopy(addr, &nev.remote_addr, len);
 	nev.remote_addr_len = len;
 	nev.userdata_size = be32toh(message->payload_size);
