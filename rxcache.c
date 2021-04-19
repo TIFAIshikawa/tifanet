@@ -199,7 +199,6 @@ rxcache_remove(big_idx_t block_idx, small_idx_t block_rx_idx)
 void
 rxcache_save(big_idx_t block_idx)
 {
-	char tmp[MAXPATHLEN + 1];
 	big_idx_t size;
 	size_t wsize;
 	FILE *f;
@@ -207,8 +206,7 @@ rxcache_save(big_idx_t block_idx)
 	__rxcache_last_block_idx = be64toh(block_idx);
 	lprintf("saving rxcache @ block %ju...", __rxcache_last_block_idx);
 
-	config_path(tmp, "blocks/rxcache.bin");
-	if (!(f = fopen(tmp, "w+")))
+	if (!(f = config_fopen("blocks/rxcache.bin", "w+")))
 		FAILTEMP("rxcache_save: %s", strerror(errno));
 
 	if (fwrite(&block_idx, 1, sizeof(big_idx_t), f) != sizeof(big_idx_t))
@@ -271,11 +269,10 @@ rxcache_create()
 	FILE *f;
 	size_t sz;
 	raw_block_t *b;
-	char tmp[MAXPATHLEN + 1];
 
 	lprintf("scanning blocks for unspent rx entries...");
 
-	if (!(f = fopen(config_path(tmp, "blocks/rxcache.bin"), "w+")))
+	if (!(f = config_fopen("blocks/rxcache.bin", "w+")))
 		FAILTEMP("rxcache_create: %s", strerror(errno));
 	fclose(f);
 
@@ -334,12 +331,10 @@ void
 rxcache_load()
 {
 	FILE *f;
-	char tmp[MAXPATHLEN + 1];
 
 	rxcache_alloc();
 
-	config_path(tmp, "blocks/rxcache.bin");
-	if (!(f = fopen(tmp, "r"))) {
+	if (!(f = config_fopen("blocks/rxcache.bin", "r"))) {
 		rxcache_create();
 	} else {
 		rxcache_read(f);
@@ -351,13 +346,13 @@ rxcache_load()
 void
 rxcache_reset()
 {
-	char tmp[MAXPATHLEN + 1];
+	char *tmp;
 
 	if (__rxcache)
 		free(__rxcache);
 	__rxcache = NULL;
 
-	config_path(tmp, "blocks/rxcache.bin");
+	tmp = config_path("blocks/rxcache.bin");
 	unlink(tmp);
 	rxcache_load();
 }

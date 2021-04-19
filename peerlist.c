@@ -85,7 +85,7 @@ peerlist_load()
 	peerlist.list4 = malloc(100 * sizeof(struct in_addr));
 	peerlist.list6 = malloc(100 * sizeof(struct in6_addr));
 
-	if ((f = fopen(config_path(file, "peerlist4.txt"), "r"))) {
+	if ((f = fopen(config_path_r(file, "peerlist4.txt"), "r"))) {
 		r = s = 0;
 		while (!feof(f)) {
 			fgets(tmp, INET6_ADDRSTRLEN + 1, f);
@@ -106,7 +106,7 @@ peerlist_load()
 			lprintf("peerlist4: %s: %s", file, strerror(errno));
 	}
 
-	if ((f = fopen(config_path(file, "peerlist6.txt"), "r"))) {
+	if ((f = fopen(config_path_r(file, "peerlist6.txt"), "r"))) {
 		r = s = 0;
 		while (!feof(f)) {
 			fgets(tmp, INET6_ADDRSTRLEN + 1, f);
@@ -134,9 +134,10 @@ void peerlist_save()
 {
 	FILE *f;
 	int w, len;
+	char file[MAXPATHLEN + 1];
 	char tmp[INET6_ADDRSTRLEN + 2];
 
-	if ((f = fopen(config_path(tmp, "peerlist4.txt"), "w+"))) {
+	if ((f = fopen(config_path_r(file, "peerlist4.txt"), "w+"))) {
 		w = 0;
 		for (size_t i = 0; i < peerlist.list4_size; i++) {
 			inet_ntop(AF_INET, &peerlist.list4[i], tmp,
@@ -151,10 +152,10 @@ void peerlist_save()
 			peerlist.list4_size);
 		fclose(f);
 	} else {
-		lprintf("peerlist4: save to %s: %s", tmp, strerror(errno));
+		lprintf("peerlist4: save to %s: %s", file, strerror(errno));
 	}
 
-	if ((f = fopen(config_path(tmp, "peerlist6.txt"), "w+"))) {
+	if ((f = fopen(config_path_r(file, "peerlist6.txt"), "w+"))) {
 		w = 0;
 		for (size_t i = 0; i < peerlist.list6_size; i++) {
 			inet_ntop(AF_INET6, &peerlist.list6[i], tmp,
@@ -169,7 +170,7 @@ void peerlist_save()
 			peerlist.list6_size);
 		fclose(f);
 	} else {
-		lprintf("peerlist6: save to %s: %s", tmp, strerror(errno));
+		lprintf("peerlist6: save to %s: %s", file, strerror(errno));
 	}
 }
 

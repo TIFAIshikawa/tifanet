@@ -50,9 +50,9 @@ static void
 rewrite_file(char *filename, void *content, size_t size)
 {
 	FILE *f;
-	char tmp[MAXPATHLEN + 1];
+	char *tmp;
 	
-	config_path(tmp, filename);
+	tmp = config_path(filename);
 
 	unlink(tmp);
 	if (!(f = fopen(tmp, "w+")))
@@ -66,26 +66,25 @@ config_load()
 {
 	FILE *f;
 	big_idx_t idx = 0;
-	char tmp[MAXPATHLEN + 1];
-	char tmp2[MAXPATHLEN + 1];
+	char *tmp;
+	char *tmp2;
 
 	snprintf(__config_dir, MAXPATHLEN + 1, "%s/.tifanet", getenv("HOME"));
 	mkdir(__config_dir, 0700);
-	mkdir(config_path(tmp, "wallets"), 0700);
-	mkdir(config_path(tmp, "blocks"), 0700);
+	mkdir(config_path("wallets"), 0700);
+	mkdir(config_path("blocks"), 0700);
 
-	config_path(tmp, "blocks/blocks0.bin");
-	config_path(tmp2, "blocks/rxcache.bin");
+	tmp = config_path("blocks/blocks0.bin");
+	tmp2 = config_path("blocks/rxcache.bin");
 	if (access(tmp, F_OK | R_OK | W_OK) != 0 && access(tmp2, F_OK) == -1) {
 		rewrite_file("blocks/blocks0.bin", __block0, sizeof(__block0));
 		rewrite_file("blocks/blocks0.idx", &idx, sizeof(big_idx_t));
 		rewrite_file("blocks/lastblock.idx", &idx, sizeof(big_idx_t));
 	}
 
-	config_path(tmp, "config");
 	__config_dir[MAXPATHLEN] = '\0';
 
-	if (!(f = fopen(tmp, "r"))) {
+	if (!(f = config_fopen("config", "r"))) {
 		if (errno != ENOENT)
 			fprintf(stderr, "configfile: %s: %s\n", tmp,
 				strerror(errno));
@@ -94,11 +93,35 @@ config_load()
 }
 
 char *
-config_path(char *buffer, const char *filename)
+config_path(const char *filename)
+{
+	static char buffer[MAXPATHLEN + 1];
+
+	return (config_path_r(buffer, filename));
+}
+
+char *
+config_path_r(char *buffer, const char *filename)
 {
  	snprintf(buffer, MAXPATHLEN + 1, "%s/%s", __config_dir, filename);
 
 	return (buffer);
+}
+
+FILE *
+config_fopen(const char *filename, const char * restrict mode)
+{
+	char tmp[MAXPATHLEN + 1];
+
+	return (fopen(config_path_r(tmp, filename), mode));
+}
+
+int
+config_unlink(const char *filename)
+{
+	char tmp[MAXPATHLEN + 1];
+
+	return (unlink(config_path_r(tmp, filename)));
 }
 
 void

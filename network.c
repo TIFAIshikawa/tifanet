@@ -59,10 +59,10 @@ char *opcode_names[OP_MAXOPCODE] = {
 	"OP_PEERLIST",
 	"OP_LASTBLOCKINFO",
 	"OP_GETBLOCK",
-	"OP_ANNOUNCENOTAR",
-	"OP_DENOUNCENOTAR",
-	"OP_ANNOUNCEBLOCK",
-	"OP_TRANSACTION",
+	"OP_NOTARANNOUNCE",
+	"OP_NOTARDENOUNCE",
+	"OP_BLOCKANNOUNCE",
+	"OP_PACT",
 	"OP_GETRXCACHE",
 	"OP_GETNOTARS"
 };
@@ -71,6 +71,7 @@ static struct ifaddrs *__ifaddrs = NULL;
 
 static void accept_notar_connection(event_info_t *, event_flags_t);
 static void message_event_on_close(event_info_t *, event_flags_t);
+static void network_event_free_userdata_on_close(event_info_t *, event_flags_t);
 
 static event_info_t *__listen_info = NULL;
 static int __ipv6_capable = 0;
@@ -98,7 +99,15 @@ socket_set_timeout(int fd, unsigned int sec_timeout)
 }
 
 char *
-peername(struct sockaddr_storage *addr, char *dst)
+peername(struct sockaddr_storage *addr)
+{
+	static char tmp[INET6_ADDRSTRLEN + 1];
+
+	return (peername_r(addr, tmp));
+}
+
+char *
+peername_r(struct sockaddr_storage *addr, char *dst)
 {
 	void *p;
 	struct sockaddr_in *a4;
@@ -225,18 +234,13 @@ accept_notar_connection(event_info_t *info, event_flags_t eventtype)
 	socket_set_timeout(fd, 10);
 
 	bzero(&nev, sizeof(network_event_t));
-#ifdef DEBUG_ALLOC
-	lprintf("+NETWORK_EVENT %p", nev);
-#endif
 	bcopy(&addr, &nev.remote_addr, len);
 	nev.remote_addr_len = len;
 	nev.type = NETWORK_EVENT_TYPE_SERVER;
 	nev.state = NETWORK_EVENT_STATE_HEADER;
-	//nev.flags = EVENT_FREE_PAYLOAD;
+	nev.on_close = network_event_free_userdata_on_close;
 	event = event_add(fd, EVENT_READ | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
 		message_read, &nev, sizeof(network_event_t));
-lprintf("ACCEPT %p", event);
-lprintf("accept %p %d", event, nev.state);
 	event->on_close = message_event_on_close;
 }
 
@@ -252,20 +256,28 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 	network_event_t *nev;
 
 	nev = info->payload;
-//	if (nev->on_close)
-//		nev->on_close(info, flags);
+	if (nev->on_close)
+		nev->on_close(info, flags);
+}
+
+static void
+network_event_free_userdata_on_close(event_info_t *info, event_flags_t flags)
+{
+	network_event_t *nev;
+
+	nev = info->payload;
 
 #ifdef DEBUG_ALLOC
-	lprintf("-NETWORK_EVENT %p", nev);
+	lprintf("-USERDATA %p", nev->userdata);
 #endif
-lprintf("-FREE %p", info);
-	free(nev);
+
+	if (nev->userdata)
+		free(nev->userdata);
 }
 
 static int
 message_header_validate(event_info_t *info)
 {
-	char tmp[INET6_ADDRSTRLEN + 1];
 	network_event_t *nev;
 	small_idx_t size;
 	message_t *msg;
@@ -294,8 +306,9 @@ message_header_validate(event_info_t *info)
 		}
 	}
 #ifdef NETWORK_DEBUG
-	lprintf("received message %s from %s", opcode_names[msg->opcode],
-		peername(&nev->remote_addr, tmp));
+	if (nev->type == NETWORK_EVENT_TYPE_SERVER)
+		lprintf("received message %s from %s",
+			opcode_names[msg->opcode], peername(&nev->remote_addr));
 #endif
 
 	return (TRUE);
@@ -315,7 +328,6 @@ message_read(event_info_t *info, event_flags_t eventtype)
 
 	nev = info->payload;
 	msg = &nev->message_header;
-lprintf("readmes: %p state=%d", info, nev->state);
 	switch (nev->state) {
 	case NETWORK_EVENT_STATE_HEADER:
 		ptr = (void *)&nev->message_header + nev->read_idx;
@@ -423,7 +435,6 @@ message_write(event_info_t *info, event_flags_t eventtype)
 static event_info_t *
 request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 {
-	char tmp[INET6_ADDRSTRLEN + 1];
 	struct sockaddr_in6 *a6;
 	struct sockaddr_in *a4;
 	network_event_t nev;
@@ -457,7 +468,7 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 //			if (errno != ECONNREFUSED && errno != ECONNRESET &&
 //				errno != EINTR)
 				lprintf("request_send: connect %s: %s",
-					peername(addr, tmp), strerror(errno));
+					peername(addr), strerror(errno));
 			close(fd);
 			peerlist_remove(addr);
 			return (NULL);
@@ -465,9 +476,6 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 	}
 
 	bzero(&nev, sizeof(network_event_t));
-#ifdef DEBUG_ALLOC
-	lprintf("+NETWORK_EVENT %p", nev);
-#endif
 	nev.type = NETWORK_EVENT_TYPE_CLIENT;
 	nev.state = NETWORK_EVENT_STATE_HEADER;
 	bcopy(message, &nev.message_header, sizeof(message_t));
@@ -475,11 +483,10 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 	bcopy(addr, &nev.remote_addr, len);
 	nev.remote_addr_len = len;
 	nev.userdata_size = be32toh(message->payload_size);
-	//nev.flags = EVENT_FREE_PAYLOAD;
+	nev.on_close = network_event_free_userdata_on_close;
 
 	res = event_add(fd, EVENT_WRITE | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
 			message_write, &nev, sizeof(network_event_t));
-lprintf("REQSEND %p", res);
 	res->on_close = message_event_on_close;
 
 	socket_set_timeout(fd, 10);
@@ -518,7 +525,6 @@ static event_info_t *
 message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 	small_idx_t size, userinfo_t info)
 {
-	char tmp[INET6_ADDRSTRLEN + 1];
 	event_info_t *res;
 	message_t msg;
 
@@ -527,7 +533,7 @@ message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 	if ((res = request_send(addr, &msg, payload))) {
 #ifdef NETWORK_DEBUG
 		lprintf("sending message %s to %s", opcode_names[opcode],
-			peername(addr, tmp));
+			peername(addr));
 #endif
 		return (res);
 	}

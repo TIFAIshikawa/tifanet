@@ -48,8 +48,9 @@ lockfile_create(void)
 	if (__lockfile_fd != -1)
 		return (TRUE);
 
-	if ((__lockfile_fd = open(config_path(file, ".lock"),
-				O_CREAT | O_RDWR, 0600)) == -1) {
+	if ((__lockfile_fd = open(config_path_r(file, ".lock"),
+		O_CREAT | O_RDWR,
+		0600)) == -1) {
 		if (errno == EACCES)
 			return (FALSE);
 

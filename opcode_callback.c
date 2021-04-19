@@ -100,8 +100,8 @@ opcode_ignore_callback_t opcode_ignore_callbacks[OP_MAXOPCODE] = {
 	NULL,			// OP_PEERLIST
 	NULL,			// OP_LASTBLOCKINFO
 	NULL,			// OP_GETBLOCK
-	NULL,			// OP_NOTAR_ANNOUNCE
-	NULL,			// OP_NOTAR_DENOUNCE
+	NULL,			// OP_NOTARANNOUNCE
+	NULL,			// OP_NOTARDENOUNCE
 	op_blockannounce_ignore,// OP_BLOCKANNOUNCE
 	NULL,			// OP_PACT
 	NULL,			// OP_GETRXCACHE
@@ -367,11 +367,10 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 		if (is_sync_only())
 			exit(0);
 
+		notar_elect_next();
 		if (!is_caches_only())
 			daemon_start();
 	}
-
-	info->on_close = NULL;
 
 	message_cancel(info);
 }
@@ -412,6 +411,7 @@ op_getblock_server(event_info_t *info, network_event_t *nev)
 	nev->write_idx = 0;
 	nev->userdata = block;
 	nev->userdata_size = sizeof(size);
+	nev->on_close = NULL; // don't try to free mmap()ed block data
 	msg->payload_size = htobe32(size);
 
 	event_update(info, EVENT_READ, EVENT_WRITE);
@@ -607,13 +607,11 @@ op_getrxcache(event_info_t *info)
 void
 op_getrxcache_server(event_info_t *info, network_event_t *nev)
 {
-	char tmp[MAXPATHLEN + 1];
 	message_t *msg;
 	size_t size;
 	FILE *f;
 
-	config_path(tmp, "blocks/rxcache.bin");
-	if (!(f = fopen(tmp, "r")))
+	if (!(f = config_fopen("blocks/rxcache.bin", "r")))
 		return message_cancel(info);
 
 	fseek(f, 0, SEEK_END);
@@ -675,13 +673,11 @@ op_getnotars(event_info_t *info)
 void
 op_getnotars_server(event_info_t *info, network_event_t *nev)
 {
-	char tmp[MAXPATHLEN + 1];
 	message_t *msg;
 	size_t size;
 	FILE *f;
 
-	config_path(tmp, "blocks/notarscache.bin");
-	if (!(f = fopen(tmp, "r")))
+	if (!(f = config_fopen("blocks/notarscache.bin", "r")))
 		return message_cancel(info);
 
 	fseek(f, 0, SEEK_END);

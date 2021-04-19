@@ -566,10 +566,8 @@ opt_resetblocks(int argc, char *argv[])
 static int
 check_caches_only(void)
 {
-	char tmp[MAXPATHLEN + 1];
-
-	if (access(config_path(tmp, "blocks/rxcache.bin"), R_OK) == 0 &&
-		access(config_path(tmp, "blocks/blocks0.bin"), R_OK) == -1)
+	if (access(config_path("blocks/rxcache.bin"), R_OK) == 0 &&
+		access(config_path("blocks/blocks0.bin"), R_OK) == -1)
 		caches_only = TRUE;
 
 	return (caches_only);

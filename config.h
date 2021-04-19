@@ -35,7 +35,7 @@
 #include <netinet/in.h>
 
 #define DEBUG_ALLOC 1
-#define NETWORK_DEBUG 1
+//#define NETWORK_DEBUG 1
 /*
  * Roadmap
  * ver: [eta date] description
@@ -95,7 +95,11 @@ typedef uint64_t amount_t;
 
 extern void config_load(void);
 
-extern char *config_path(char *buffer, const char *filename);
+extern char *config_path(const char *filename);
+extern char *config_path_r(char *buffer, const char *filename);
+
+extern FILE *config_fopen(const char *filename, const char * restrict mode);
+extern int config_unlink(const char *filename);
 
 extern void set_is_notar_node(int is_notar);
 extern int is_notar_node(void);
