@@ -108,6 +108,7 @@ extern void blockchain_update(void);
 extern void blockchain_set_updating(int updating);
 extern int blockchain_is_updating(void);
 
+extern void getblock(big_idx_t index);
 extern void getblocks(big_idx_t target_idx);
 
 extern void blocks_remove(void);
@@ -115,7 +116,6 @@ extern void blocks_remove(void);
 extern int raw_block_validate(raw_block_t *raw_block, size_t blocksize); 
 
 extern void block_poll_start(void);
-extern void block_poll_cancel(void);
 
 inline static int
 block_exists(big_idx_t index)

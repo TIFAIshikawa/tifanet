@@ -37,7 +37,7 @@
 #include "event.h"
 #include "address.h"
 
-
+extern int qq;
 typedef char magic_t[4];
 typedef uint8_t version_t;
 typedef uint8_t opcode_t;
@@ -145,8 +145,6 @@ extern size_t message_broadcast_with_callback(opcode_t opcode, void *payload,
 
 extern void message_read(event_info_t *, event_flags_t);
 extern void message_write(event_info_t *, event_flags_t);
-
-extern void getblock(big_idx_t index);
 
 extern void daemon_start(void);
 

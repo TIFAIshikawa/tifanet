@@ -358,18 +358,10 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 	if (lcl_idx < rmt_idx) {
 		blockchain_set_updating(1);
 		notar_elect_next();
-		block_poll_start();
 		getblocks(rmt_idx);
 	} else {
-		lprintf("fully synchronized");
 		blockchain_set_updating(0);
-
-		if (is_sync_only())
-			exit(0);
-
-		notar_elect_next();
-		if (!is_caches_only())
-			daemon_start();
+		daemon_start();
 	}
 
 	message_cancel(info);
@@ -427,11 +419,12 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 	msg = network_message(info);
 
 	if (raw_block_validate(nev->userdata, be32toh(msg->payload_size))) {
-		block_poll_cancel();
+		lprintf("received block %ju", block_idx(nev->userdata));
 		raw_block_process(nev->userdata, be32toh(msg->payload_size));
 	}
 
 	message_cancel(info);
+
 	getblocks(0);
 }
 
@@ -471,7 +464,6 @@ op_blockannounce(event_info_t *info)
 	msg = network_message(info);
 
 	if (raw_block_validate(nev->userdata, be32toh(msg->payload_size))) {
-		block_poll_cancel();
 		raw_block_process(nev->userdata, nev->read_idx);
 
 		// get block from block storage (which is permanent, whereas

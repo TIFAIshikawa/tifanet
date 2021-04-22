@@ -223,9 +223,8 @@ notar_elect_next(void)
 
 	__next_notar_idx = idx;
 
-	lprintf("next notar(%ju)=%s for block %ju", idx,
-		public_key_node_name(__notars[__next_notar_idx], name),
-		block_idx_last() + 1);
+	lprintf("next block %ju->%s (%d)", block_idx_last() + 1,
+		public_key_node_name(__notars[__next_notar_idx], name), idx);
 
 	if (should_generate_block() && !blockchain_is_updating()) {
 		if (!has_pending_pacts())

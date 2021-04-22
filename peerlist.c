@@ -48,6 +48,7 @@
 #include <netinet/in.h>
 #include "peerlist.h"
 #include "network.h"
+#include "config.h"
 #include "event.h"
 #include "log.h"
 
@@ -246,7 +247,7 @@ peerlist_add_ipv4(struct in_addr addr)
 {
 	size_t slen;
 	struct sockaddr_in a4 = { };
-#ifdef PEERLIST_DEBUG
+#ifdef DEBUG_PEERLIST
 	char tmp[INET_ADDRSTRLEN + 1];
 	inet_ntop(AF_INET, &addr, tmp, INET_ADDRSTRLEN);
 #endif
@@ -254,14 +255,14 @@ peerlist_add_ipv4(struct in_addr addr)
 	a4.sin_family = AF_INET;
 	a4.sin_addr = addr;
 	if (is_local_interface_address((struct sockaddr_storage *)&a4)) {
-#ifdef PEERLIST_DEBUG
+#ifdef DEBUG_PEERLIST
 		lprintf("is_local_interface_address: %s", tmp);
 #endif
 		return;
 	}
 
 	if (is_nonroutable_address((struct sockaddr_storage *)&a4)) {
-#ifdef PEERLIST_DEBUG
+#ifdef DEBUG_PEERLIST
 		lprintf("is_nonroutable_address: %s", tmp);
 #endif
 		return;
@@ -278,7 +279,7 @@ peerlist_add_ipv4(struct in_addr addr)
 
 	peerlist.list4[peerlist.list4_size] = addr;
 	peerlist.list4_size++;
-#ifdef PEERLIST_DEBUG
+#ifdef DEBUG_PEERLIST
 	lprintf("peerlist_add_ipv4: %s", tmp);
 #endif
 }
@@ -288,7 +289,7 @@ peerlist_add_ipv6(struct in6_addr addr)
 {
 	size_t slen;
 	struct sockaddr_in6 a6;
-#ifdef PEERLIST_DEBUG
+#ifdef DEBUG_PEERLIST
 	char tmp[INET6_ADDRSTRLEN + 1];
 	inet_ntop(AF_INET6, &addr, tmp, INET6_ADDRSTRLEN);
 #endif
@@ -297,14 +298,14 @@ peerlist_add_ipv6(struct in6_addr addr)
 	a6.sin6_addr = addr;
 
 	if (is_local_interface_address((struct sockaddr_storage *)&a6)) {
-#ifdef PEERLIST_DEBUG
+#ifdef DEBUG_PEERLIST
 		lprintf("is_local_interface_address: %s", tmp);
 #endif
 		return;
 	}
 
 	if (is_nonroutable_address((struct sockaddr_storage *)&a6)) {
-#ifdef PEERLIST_DEBUG
+#ifdef DEBUG_PEERLIST
 		lprintf("is_nonroutable_address: %s", tmp);
 #endif
 		return;
@@ -321,7 +322,7 @@ peerlist_add_ipv6(struct in6_addr addr)
 
 	peerlist.list6[peerlist.list6_size] = addr;
 	peerlist.list6_size++;
-#ifdef PEERLIST_DEBUG
+#ifdef DEBUG_PEERLIST
 	lprintf("peerlist_add_ipv6: %s", tmp);
 #endif
 }
@@ -370,7 +371,7 @@ peerlist_remove_ipv4(struct in_addr addr)
 		bcopy(&peerlist.list4[i + 1], &peerlist.list4[i], slen);
 
 	peerlist.list4_size--;
-#ifdef PEERLIST_DEBUG
+#ifdef DEBUG_PEERLIST
 	char tmp[INET_ADDRSTRLEN + 1];
 	inet_ntop(AF_INET, &addr, tmp, INET_ADDRSTRLEN);
 	lprintf("peerlist_remove_ipv4: %s", tmp);
@@ -394,7 +395,7 @@ peerlist_remove_ipv6(struct in6_addr addr)
 		bcopy(&peerlist.list6[i + 1], &peerlist.list6[i], slen);
 
 	peerlist.list6_size--;
-#ifdef PEERLIST_DEBUG
+#ifdef DEBUG_PEERLIST
 	char tmp[INET6_ADDRSTRLEN + 1];
 	inet_ntop(AF_INET6, &addr, tmp, INET6_ADDRSTRLEN);
 	lprintf("peerlist_remove_ipv6: %s", tmp);

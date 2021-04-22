@@ -76,7 +76,7 @@ event_info_alloc(int ident, event_callback_t callback, void *payload,
 
 	res = calloc(1, sizeof(event_info_t) + payload_size);
 #ifdef DEBUG_ALLOC
-	lprintf("+EVENT %p", res);
+	lprintf("+EVENT %p %d", res, ident);
 #endif
 
 	res->ident = ident;
@@ -174,7 +174,8 @@ timer_set(uint64_t msec_delay, event_callback_t callback, void *payload)
 
 	res->ident = (uintptr_t)res;
 
-	EV_SET(&event, res->ident, EVFILT_TIMER, EV_ADD | EV_ENABLE | EV_ONESHOT, 0, msec_delay, res);
+	EV_SET(&event, res->ident, EVFILT_TIMER,
+		EV_ADD | EV_ENABLE | EV_ONESHOT, 0, msec_delay, res);
 
 	if (kevent(__eventfd, &event, 1, NULL, 0, NULL) == -1)
 		FAIL(EX_TEMPFAIL, "timer_set: %s\n", strerror(errno));
@@ -284,7 +285,7 @@ event_free(event_info_t *info)
 		free(info->payload);
 
 #ifdef DEBUG_ALLOC
-	lprintf("-EVENT %p", info);
+	lprintf("-EVENT %p %d", info, info->ident);
 #endif
 	free(info);
 }

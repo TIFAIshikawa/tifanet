@@ -34,8 +34,9 @@
 #include <sys/param.h>
 #include <netinet/in.h>
 
-#define DEBUG_ALLOC 1
-//#define NETWORK_DEBUG 1
+//#define DEBUG_NETWORK 1
+//#define DEBUG_ALLOC 1
+#define PEERLIST_DEBUG 1
 /*
  * Roadmap
  * ver: [eta date] description
@@ -44,7 +45,7 @@
  * 0.8: [etaunknown] Pact type II (masked pacts)
  *      [2021-06-01] Go live ???
  * 0.7: [2021-05-10] Nicify code
- * 0.6: [2021-05-01] Denounce notar upon block timeout
+ * 0.6: [2021-05-01] Denounce notar, e.g. upon block timeout
  * 0.5: [2021-04-19] Robustify network: fault tolerance, e.g. fix possible
  *      infinite loops
  * 0.4: [2021-04-14] Thin client mode: run thin tifanetd with only caches

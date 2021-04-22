@@ -271,6 +271,9 @@ add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt)
 		}
 
 		free(caches);
+#ifdef DEBUG_ALLOC
+		lprintf("-RXCACHESFORADDRESS %p", caches);
+#endif
 	}
 
 	pact_rx_add(t, (void *)feeaddress, amount);
@@ -839,7 +842,7 @@ blockchain_update()
 {
 	blockchain_set_updating(1);
 	if (!message_send_random(OP_LASTBLOCKINFO, NULL, 0, 0)) {
-#ifdef NETWORK_DEBUG
+#ifdef DEBUG_NETWORK
 		lprintf("blockchain_update: failed retrieving last block, "
 			"trying again...");
 #endif
@@ -859,23 +862,43 @@ blockchain_is_updating(void)
 	return __blockchain_is_updating;
 }
 
+ 
+void
+getblock(big_idx_t index)
+{
+	if (!message_send_random(OP_GETBLOCK, NULL, 0, htobe64(index)))
+		getblock(index);
+}
+
 void
 getblocks(big_idx_t target_idx)
 {
 	big_idx_t cur_idx;
 
+	if (!__getblocks_target_idx && !target_idx)
+		return;
+
 	if (target_idx)
 		__getblocks_target_idx = target_idx;
 
 	cur_idx = block_idx_last();
-	if (cur_idx >= __getblocks_target_idx) {
-		__getblocks_target_idx = 0;
-		blockchain_set_updating(0);
-		return;
+	if (cur_idx < __getblocks_target_idx) {
+		cur_idx++;
+		return getblock(cur_idx);
 	}
 
-	cur_idx++;
-	getblock(cur_idx);
+	__getblocks_target_idx = 0;
+	blockchain_set_updating(0);
+
+	lprintf("fully synchronized");
+
+	if (is_sync_only())
+		exit(0);
+
+	notar_elect_next();
+	if (!is_caches_only())
+		daemon_start();
+	return;
 }
 
 void
@@ -909,15 +932,4 @@ block_poll_start(void)
 		return;
 
 	__block_poll_timer = timer_set(3000, __block_poll_tick, NULL);
-}
-
-void
-block_poll_cancel(void)
-{
-return;
-	if (!__block_poll_timer)
-		return;
-
-	timer_cancel(__block_poll_timer);
-	__block_poll_timer = NULL;
 }

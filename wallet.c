@@ -54,6 +54,9 @@ wallet_add(wallet_t *wallet)
 
 	wlen = sizeof(wallet_t *);
 	if (__num_wallets % 10 == 0) {
+#ifdef DEBUG_ALLOC
+		lprintf("*WALLETS %p", __wallets);
+#endif
 		__wallets = realloc(__wallets, (__num_wallets + 10) * wlen);
 		bzero(__wallets + __num_wallets, 10 * wlen);
 	}
@@ -68,6 +71,9 @@ wallets_load()
 	struct dirent *ent;
 
 	__wallets = calloc(10, sizeof(wallet_t *));
+#ifdef DEBUG_ALLOC
+	lprintf("+WALLETS %p", __wallets);
+#endif
 	wallet_create(NULL);
 
 	if ((dir = opendir(config_path("wallets")))) {
@@ -131,9 +137,15 @@ wallet_alloc(const char *name)
 	wallet_t *res;
 
 	res = malloc(sizeof(wallet_t));
+#ifdef DEBUG_ALLOC
+	lprintf("+WALLET %p", __wallets);
+#endif
 	res->name = strdup(name);
 	res->num_addresses = 0;
 	res->addresses = malloc(sizeof(address_t *) * 10);
+#ifdef DEBUG_ALLOC
+	lprintf("+ADDRESSES %p", res->addresses);
+#endif
 
 	return (res);
 }
@@ -233,6 +245,9 @@ wallet_address_add(wallet_t *wallet, address_t *address)
 			return;
 
 	if (wallet->num_addresses % 10 == 0) {
+#ifdef DEBUG_ALLOC
+	lprintf("*ADDRESSES %p", wallet->addresses);
+#endif
 		wallet->addresses = realloc(wallet->addresses,
 			sizeof(address_t *) * wallet->num_addresses + 10);
 	}

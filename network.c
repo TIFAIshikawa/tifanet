@@ -256,6 +256,11 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 	network_event_t *nev;
 
 	nev = info->payload;
+
+	if (nev->type == NETWORK_EVENT_TYPE_CLIENT && !nev->write_idx &&
+		nev->state == NETWORK_EVENT_STATE_HEADER)
+		peerlist_remove(&nev->remote_addr);
+
 	if (nev->on_close)
 		nev->on_close(info, flags);
 }
@@ -305,7 +310,7 @@ message_header_validate(event_info_t *info)
 			return (FALSE);
 		}
 	}
-#ifdef NETWORK_DEBUG
+#ifdef DEBUG_NETWORK
 	if (nev->type == NETWORK_EVENT_TYPE_SERVER)
 		lprintf("received message %s from %s",
 			opcode_names[msg->opcode], peername(&nev->remote_addr));
@@ -521,6 +526,7 @@ message_init(message_t *msg, opcode_t opcode, small_idx_t size, userinfo_t info)
 	msg->version = TIFA_NETWORK_VERSION;
 	msg->opcode = opcode;
 	if (is_notar_node())
+		// this might change to (!is_sync_only() && !is_caches_only())
 		msg->flags |= MESSAGE_FLAG_PEER;
 	msg->flags = htobe16(msg->flags);
 	msg->userinfo = info;
@@ -537,7 +543,7 @@ message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 	message_init(&msg, opcode, size, info);
 
 	if ((res = request_send(addr, &msg, payload))) {
-#ifdef NETWORK_DEBUG
+#ifdef DEBUG_NETWORK
 		lprintf("sending message %s to %s", opcode_names[opcode],
 			peername(addr));
 #endif
@@ -717,22 +723,4 @@ daemon_start(void)
 	listen_socket_open();
 	notar_start();
 	block_poll_start();
-}
-
-static void
-__getblock_again(event_info_t *info, event_flags_t eventflags)
-{
-        getblocks(0);
-}
-
-void
-getblock(big_idx_t index)
-{
-	event_info_t *info;
-
-	if (!(info = message_send_random(OP_GETBLOCK, NULL, 0,
-		htobe64(index)))) {
-		__getblock_again(info, EVENT_READ);
-		return;
-	}
 }

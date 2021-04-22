@@ -123,6 +123,9 @@ rxcache_add(big_idx_t block_idx, small_idx_t block_rx_idx, pact_rx_t *rx)
 	}
 
 	__rxcache = realloc(__rxcache, sizeof(rxcache_t) * (__rxcache_size + 100));
+#ifdef DEBUG_ALLOC
+	lprintf("*RXCACHE %p", __rxcache);
+#endif
 	bzero(__rxcache + sizeof(rxcache_t) * __rxcache_size, sizeof(rxcache_t) * 100);
 	__rxcache_size += 100;
 }
@@ -140,13 +143,22 @@ rxcaches_for_address(address_t *address, size_t *amount)
 		item = __rxcache[i];
 		if (pubkey_compare(item.rx.address, pk) == 0 &&
 			 item.rx.amount) {
-			if (!res)
+			if (!res) {
 				res = malloc(sizeof(rxcache_t *) * 10);
+#ifdef DEBUG_ALLOC
+				lprintf("+RXCACHESFORADDRESS %p", res);
+#endif
+			}
 
 			res[count] = __rxcache + i;
 			count++;
-			if (count % 10 == 0)
-				res = realloc(res, sizeof(rxcache_t *) * count + 10);
+			if (count % 10 == 0) {
+				res = realloc(res, sizeof(rxcache_t *) *
+					count + 10);
+#ifdef DEBUG_ALLOC
+				lprintf("*RXCACHESFORADDRESS %p", res);
+#endif
+			}
 		}
 	}
 
@@ -296,6 +308,9 @@ rxcache_read(FILE *f)
 	rsize = __rxcache_size * sizeof(rxcache_t);
 
 	__rxcache = malloc(rsize);
+#ifdef DEBUG_ALLOC
+	lprintf("+RXCACHE %p READ", __rxcache);
+#endif
 	if (fread(__rxcache, 1, rsize, f) != rsize)
 		FAILTEMP("rxcache_read: failed reading cache: %s",
 			 strerror(errno));
@@ -324,6 +339,9 @@ rxcache_alloc()
 		return;
 
 	__rxcache = calloc(1, sizeof(rxcache_t) * 100);
+#ifdef DEBUG_ALLOC
+	lprintf("+RXCACHE %p ALLOC", __rxcache);
+#endif
 	__rxcache_size = 100;
 }
 
