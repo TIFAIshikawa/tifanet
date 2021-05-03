@@ -1,7 +1,6 @@
 CC	?=cc
 LD	?=cc
 DESTDIR	?=/usr/local
-#CFLAGS	+=-g -Wall
 CFLAGS	+=-g -Wall -Wmissing-prototypes -Wstrict-prototypes
 LDFLAGS	+=-lsodium
 

@@ -403,7 +403,6 @@ op_getblock_server(event_info_t *info, network_event_t *nev)
 	nev->write_idx = 0;
 	nev->userdata = block;
 	nev->userdata_size = sizeof(size);
-	nev->on_close = NULL; // don't try to free mmap()ed block data
 	msg->payload_size = htobe32(size);
 
 	event_update(info, EVENT_READ, EVENT_WRITE);

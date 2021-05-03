@@ -108,6 +108,9 @@ address_alloc()
 	address_t *res;
 
 	res = malloc(sizeof(address_t));
+#ifdef DEBUG_ALLOC
+	lprintf("+ADDRESS %p", res);
+#endif
 
 	return (res);
 }
@@ -129,6 +132,9 @@ void
 address_free(address_t *address)
 {
 	keypair_free(address->keypair);
+#ifdef DEBUG_ALLOC
+	lprintf("-ADDRESS %p", address);
+#endif
 	free(address);
 }
 

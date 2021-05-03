@@ -37,7 +37,6 @@
 #include "event.h"
 #include "address.h"
 
-extern int qq;
 typedef char magic_t[4];
 typedef uint8_t version_t;
 typedef uint8_t opcode_t;

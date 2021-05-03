@@ -200,7 +200,8 @@ schedule_generate_block_retry(void)
 
 //	lprintf("should create block but no pacts, delaying");
 
-	__notar_timer = timer_set(4000, notar_tick, NULL);
+//	__notar_timer = timer_set(4000, notar_tick, NULL);
+	__notar_timer = timer_set(100, notar_tick, NULL);
 }
 
 void

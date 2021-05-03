@@ -69,9 +69,8 @@ char *opcode_names[OP_MAXOPCODE] = {
 
 static struct ifaddrs *__ifaddrs = NULL;
 
-static void accept_notar_connection(event_info_t *, event_flags_t);
+static void accept_connection(event_info_t *, event_flags_t);
 static void message_event_on_close(event_info_t *, event_flags_t);
-static void network_event_free_userdata_on_close(event_info_t *, event_flags_t);
 
 static event_info_t *__listen_info = NULL;
 static int __ipv6_capable = 0;
@@ -183,7 +182,7 @@ __listen_socket_open(struct sockaddr_storage *addr)
 		FAILBOOL("listen_socket_open: listen: %s", strerror(errno));
 	}
 
-	__listen_info = event_add(fd, EVENT_READ, accept_notar_connection,
+	__listen_info = event_add(fd, EVENT_READ, accept_connection,
 				NULL, 0);
 
 	lprintf("listening for connections...");
@@ -216,7 +215,7 @@ listen_socket_open()
 }
 
 void
-accept_notar_connection(event_info_t *info, event_flags_t eventtype)
+accept_connection(event_info_t *info, event_flags_t eventtype)
 {
 	struct sockaddr_storage addr;
 	network_event_t nev;
@@ -226,7 +225,7 @@ accept_notar_connection(event_info_t *info, event_flags_t eventtype)
 
 	len = sizeof(struct sockaddr_storage);
 	if ((fd = accept(info->ident, (struct sockaddr *)&addr, &len)) == -1)
-		FAIL(EX_TEMPFAIL, "accept_notar_connection: accept: %s",
+		FAIL(EX_TEMPFAIL, "accept_connection: accept: %s",
 				  strerror(errno));
 
 	socket_set_async(fd);
@@ -238,7 +237,6 @@ accept_notar_connection(event_info_t *info, event_flags_t eventtype)
 	nev.remote_addr_len = len;
 	nev.type = NETWORK_EVENT_TYPE_SERVER;
 	nev.state = NETWORK_EVENT_STATE_HEADER;
-	nev.on_close = network_event_free_userdata_on_close;
 	event = event_add(fd, EVENT_READ | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
 		message_read, &nev, sizeof(network_event_t));
 	event->on_close = message_event_on_close;
@@ -253,31 +251,47 @@ message_cancel(event_info_t *info)
 static void
 message_event_on_close(event_info_t *info, event_flags_t flags)
 {
+	struct sockaddr_storage tmp;
 	network_event_t *nev;
+	message_t *msg;
+	opcode_t opcode;
+	socklen_t len;
+	char c;
 
 	nev = info->payload;
 
-	if (nev->type == NETWORK_EVENT_TYPE_CLIENT && !nev->write_idx &&
-		nev->state == NETWORK_EVENT_STATE_HEADER)
-		peerlist_remove(&nev->remote_addr);
+	if (!nev->read_idx && !nev->write_idx) {
+		len = sizeof(struct sockaddr_storage);
+		if (getpeername(info->ident, (struct sockaddr *)&tmp,
+			&len) == -1) {
+			if (errno != ENOTCONN)
+				read(info->ident, &c, 1);
+			lprintf("message_event_on_close: connect %s: %s",
+				peername(&nev->remote_addr), strerror(errno));
+			peerlist_remove(&nev->remote_addr);
+		}
+	}
 
 	if (nev->on_close)
 		nev->on_close(info, flags);
-}
 
-static void
-network_event_free_userdata_on_close(event_info_t *info, event_flags_t flags)
-{
-	network_event_t *nev;
+	if (!nev->userdata)
+		return;
 
-	nev = info->payload;
+	msg = network_message(info);
+	opcode = msg->opcode;
+	if ((nev->type == NETWORK_EVENT_TYPE_SERVER && opcode == OP_GETBLOCK) ||
+		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_BLOCKANNOUNCE)) {
+#ifdef DEBUG_ALLOC
+lprintf("NOT FREEING USERDATA %p nev=%p info=%p opcode=%s type=%d", nev->userdata, nev, info, opcode_names[opcode], nev->type);
+#endif
+		return;
+	}
 
 #ifdef DEBUG_ALLOC
-	lprintf("-USERDATA %p", nev->userdata);
+	lprintf("-USERDATA %p MESSAGE_READ opcode=%s type=%hd state=%hd nev=%p info=%p nev->onclose=%p info->onclose=%p", nev->userdata, opcode_names[opcode], nev->type, nev->state, nev, info, nev->on_close, info->on_close);
 #endif
-
-	if (nev->userdata)
-		free(nev->userdata);
+	free(nev->userdata);
 }
 
 static int
@@ -338,7 +352,8 @@ message_read(event_info_t *info, event_flags_t eventtype)
 		ptr = (void *)&nev->message_header + nev->read_idx;
 		want = sizeof(message_t) - nev->read_idx;
 		if ((r = read(info->ident, ptr, want)) <= 0) {
-			if (errno != EAGAIN && errno != EINTR)
+			if (errno != EAGAIN && errno != EWOULDBLOCK &&
+				errno != EINTR)
 				message_cancel(info);
 			return;
 		}
@@ -351,7 +366,7 @@ message_read(event_info_t *info, event_flags_t eventtype)
 
 			nev->userdata = malloc(be32toh(msg->payload_size));
 #ifdef DEBUG_ALLOC
-			lprintf("+USERDATA %p MESSAGE_READ", nev->userdata);
+			lprintf("+USERDATA %p MESSAGE_READ type=%hd state=%hd nev=%p info=%p nev->onclose=%p info->onclose=%p", nev->userdata, nev->type, nev->state, nev, info, nev->on_close, info->on_close);
 #endif
 			if (be16toh(msg->flags) & MESSAGE_FLAG_PEER)
 				peerlist_add(&nev->remote_addr);
@@ -365,7 +380,7 @@ message_read(event_info_t *info, event_flags_t eventtype)
 		want = be32toh(msg->payload_size) - nev->read_idx;
 		if (nev->read_idx != want) {
 			if ((r = read(info->ident, ptr, want)) == -1) {
-				if (errno != EAGAIN) {
+				if (errno != EAGAIN && errno != EWOULDBLOCK) {
 					message_cancel(info);
 					return;
 				}
@@ -470,13 +485,9 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 			strerror(errno));
 
 	if (connect(fd, (struct sockaddr *)addr, len) == -1) {
-		// EINPROGRESS will be handled by event loop. Other errors
-		// are fatal. Don't log common errors though.
-		if (errno != EINPROGRESS) {
-//			if (errno != ECONNREFUSED && errno != ECONNRESET &&
-//				errno != EINTR)
-				lprintf("request_send: connect %s: %s",
-					peername(addr), strerror(errno));
+		if (errno != EINPROGRESS && errno != EWOULDBLOCK) {
+			lprintf("request_send: connect %s: %s",
+				peername(addr), strerror(errno));
 			close(fd);
 			peerlist_remove(addr);
 			return (NULL);
@@ -488,17 +499,18 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 	nev.state = NETWORK_EVENT_STATE_HEADER;
 	bcopy(message, &nev.message_header, sizeof(message_t));
 	nev.userdata = payload;
-#ifdef DEBUG_ALLOC
-	lprintf("+USERDATA %p REQUEST_SEND", nev.userdata);
-#endif
 	bcopy(addr, &nev.remote_addr, len);
 	nev.remote_addr_len = len;
 	nev.userdata_size = be32toh(message->payload_size);
-	nev.on_close = network_event_free_userdata_on_close;
 
 	res = event_add(fd, EVENT_WRITE | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
 			message_write, &nev, sizeof(network_event_t));
 	res->on_close = message_event_on_close;
+#ifdef DEBUG_ALLOC
+network_event_t *nv;
+nv = res->payload;
+	lprintf("+USERDATA %p REQUEST_SEND nev=%p info=%p nev->on_close=%p info->on_close=%p type=%d state=%d", nev.userdata, nv, res, nv->on_close, res->on_close, nv->type, nv->state);
+#endif
 
 	socket_set_timeout(fd, 10);
 
@@ -544,8 +556,11 @@ message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 
 	if ((res = request_send(addr, &msg, payload))) {
 #ifdef DEBUG_NETWORK
-		lprintf("sending message %s to %s", opcode_names[opcode],
-			peername(addr));
+network_event_t *nev;
+nev = res->payload;
+		lprintf("sending message %s to %s (nev=%p info=%p nev->on_close=%p info->on_close=%p)", opcode_names[opcode], peername(addr), nev, res, nev->on_close, res->on_close);
+//		lprintf("sending message %s to %s", opcode_names[opcode],
+//			peername(addr));
 #endif
 		return (res);
 	}
@@ -585,7 +600,11 @@ message_send_random_with_callback(opcode_t opcode, void *payload,
 void
 message_set_callback(event_info_t *info, event_callback_t callback)
 {
-	info->on_close = callback;
+	network_event_t *nev;
+
+	nev = info->payload;
+
+	nev->on_close = callback;
 }
 
 int
