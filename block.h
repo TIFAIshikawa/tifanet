@@ -41,7 +41,14 @@
 #include "pact.h"
 
 enum block_flags {
-	BLOCK_FLAG_NEW_NOTAR = (1LL << 0)	// Block introduces new notar
+	BLOCK_FLAG_NEW_NOTAR		= (1LL << 0),	// Block introduces
+							// new notar
+	BLOCK_FLAG_DENOUNCE_NOTAR	= (1LL << 1),	// Block is trailed by
+							// list of denounced
+							// notars and respecitve
+							// reasons
+	BLOCK_FLAG_TIMEOUT		= (1LL << 2)	// Block is special
+							// raw_block_timeout
 };
 
 typedef struct __attribute__((__packed__)) __raw_block {
@@ -55,7 +62,7 @@ typedef struct __attribute__((__packed__)) __raw_block {
 	small_idx_t num_banned_notars;
 	small_idx_t num_pacts;
 	// public_key_t new_notar;
-	// pacts & banned notars after here...
+	// pacts & denounced notar structures after here...
 } raw_block_t;
 
 typedef struct __attribute__((__packed__)) __block {
@@ -71,6 +78,16 @@ typedef struct __attribute__((__packed__)) __block {
 	pact_t **pacts;
 	ban_message_t **banned_notars;
 } block_t;
+
+typedef struct __attribute__((__packed__)) __raw_block_timeout {
+	big_idx_t index;
+	time64_t time;
+	flags_t flags;
+	hash_t prev_block_hash;
+	public_key_t denounced_notar;
+	public_key_t notar[2];
+	signature_t signature[2];
+} raw_block_timeout_t;
 
 extern big_idx_t block_idx_last(void);
 extern raw_block_t *raw_block_last(size_t *size);
@@ -127,6 +144,12 @@ inline static big_idx_t
 block_idx(raw_block_t *raw_block)
 {
 	return (be64toh(raw_block->index));
+}
+
+inline static time64_t
+block_time(raw_block_t *raw_block)
+{
+	return (be64toh(raw_block->time));
 }
 
 inline static small_idx_t

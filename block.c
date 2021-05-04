@@ -420,11 +420,11 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	int err;
 	void *crx;
 	hash_t pbh;
-	time_t ct, bt;
 	big_idx_t idx;
 	signature_t sig;
-	size_t tbs, size, scount;
+	time_t ct, bt, lbt;
 	raw_pact_t *t, *tt;
+	size_t tbs, size, scount;
 
 	// check block size
 	if (blocksize < sizeof(raw_block_t) + sizeof(raw_pact_t) +
@@ -441,10 +441,16 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	}
 
 	ct = time(NULL);
-	bt = be64toh(raw_block->time);
+	bt = block_time(raw_block);
+	lbt = block_time(__raw_block_last);
 	if (bt > ct) {
 		lprintf("block with index %ju has time in future: %ld vs %ld",
 			bt, ct);
+		return (FALSE);
+	}
+	if (lbt > bt) {
+		lprintf("block with index %ju has time earlier than previous "
+			"block: %ld vs %ld", bt, lbt);
 		return (FALSE);
 	}
 
@@ -776,7 +782,7 @@ raw_block_print(raw_block_t *raw_block)
 	pact_rx_t *rx;
 	time_t tm;
 
-	tm = (time_t)be64toh(raw_block->time);
+	tm = (time_t)block_time(raw_block);
 	printf("---\nresult:\n");
 	printf("  index: %ju\n", block_idx(raw_block));
 	printf("  time: %ju %s", be64toh(raw_block->time), ctime(&tm));
@@ -915,18 +921,13 @@ static void
 __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 {
 	time_t t;
-	size_t sz;
 
 	__block_poll_timer = NULL;
 
 	t = time(NULL);
-	if (t > be64toh(raw_block_last(&sz)->time) + 5) {
+	if (t > block_time(__raw_block_last) + 5) {
 		lprintf("no blocks seen in the last 5 seconds, polling...");
-//		if (blockchain_is_updating())
-//			message_broadcast(OP_GETBLOCK, NULL, 0,
-//				htobe64(block_idx_last() + 1));
-//		else
-			blockchain_update();
+		blockchain_update();
 	}
 
 	block_poll_start();

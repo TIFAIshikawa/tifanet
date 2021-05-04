@@ -44,9 +44,9 @@
  * 0.9: [etaunknown] Pact type III (Solidity & ERC20) ?
  * 0.8: [etaunknown] Pact type II (masked pacts)
  *      [2021-06-01] Go live ???
- * 0.7: [2021-05-10] Nicify code
- * 0.6: [2021-05-01] Denounce notar, e.g. upon block timeout
- * 0.5: [2021-04-19] Robustify network: fault tolerance, e.g. fix possible
+ * 0.7: [2021-05-20] Nicify code
+ * 0.6: [2021-05-10] Denounce notar, e.g. upon block timeout
+ * 0.5: [2021-05-04] Robustify network: fault tolerance, e.g. fix possible
  *      infinite loops
  * 0.4: [2021-04-14] Thin client mode: run thin tifanetd with only caches
  * 0.3: [2021-04-01] Peerlist IPv4 & IPv6
