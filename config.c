@@ -39,7 +39,14 @@
 #include "log.h"
 #include "config.h"
 #include "wallet.h"
-#include "block0.h"
+
+#if defined(ALPHA)
+#include "block0-alpha.h"
+#elif defined(BETA)
+#include "block0-beta.h"
+#else
+#include "block0-gamma.h"
+#endif
 
 static char __config_dir[MAXPATHLEN + 1];
 static int __is_notar_node = 0;
@@ -64,7 +71,6 @@ rewrite_file(char *filename, void *content, size_t size)
 void
 config_load()
 {
-	FILE *f;
 	big_idx_t idx = 0;
 	char *tmp;
 	char *tmp2;
@@ -83,13 +89,6 @@ config_load()
 	}
 
 	__config_dir[MAXPATHLEN] = '\0';
-
-	if (!(f = config_fopen("config", "r"))) {
-		if (errno != ENOENT)
-			fprintf(stderr, "configfile: %s: %s\n", tmp,
-				strerror(errno));
-//		exit (EX_CONFIG);
-	}
 }
 
 char *

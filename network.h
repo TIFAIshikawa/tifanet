@@ -74,7 +74,7 @@ enum message_flags {
 	MESSAGE_FLAG_PEER = (1 << 0)	// ask to join the remote's peerlist
 };
 
-extern char *opcode_names[];
+extern const char *const opcode_names[];
 
 typedef struct __attribute__((__packed__)) __message {
 	magic_t magic;

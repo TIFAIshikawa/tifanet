@@ -34,8 +34,8 @@
 #include <sys/param.h>
 #include <netinet/in.h>
 
-#define DEBUG_NETWORK 1
-#define DEBUG_ALLOC 1
+//#define DEBUG_NETWORK 1
+//#define DEBUG_ALLOC 1
 #define DEBUG_PEERLIST 1
 /*
  * Roadmap

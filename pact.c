@@ -194,12 +194,10 @@ raw_pact_t *
 raw_pact_create(pact_t *t, size_t *size)
 {
 	raw_pact_t *res;
-	size_t sz;
-	void *buf;
+	uint8_t *buf;
 
 	res = raw_pact_alloc(t, size);
-	sz = *size;
-	buf = res;
+	buf = (uint8_t *)res;
 
 	bcopy(t, buf, sizeof(raw_pact_t));
 	buf += sizeof(raw_pact_t);

@@ -353,7 +353,7 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 	blockinfo = nev->userdata;
 	rmt_idx = be64toh(blockinfo->index);
 
-	lprintf("last block is #%ju", rmt_idx);
+	lprintf("last block is #%ju (our last is %ju)", rmt_idx, lcl_idx);
 
 	if (lcl_idx < rmt_idx) {
 		blockchain_set_updating(1);
@@ -362,6 +362,7 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 	} else {
 		blockchain_set_updating(0);
 		daemon_start();
+		notar_elect_next();
 	}
 
 	message_cancel(info);

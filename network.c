@@ -54,7 +54,7 @@
 #include "peerlist.h"
 #include "opcode_callback.h"
 
-char *opcode_names[OP_MAXOPCODE] = {
+const char *const opcode_names[OP_MAXOPCODE] = {
 	"OP_NONE",
 	"OP_PEERLIST",
 	"OP_LASTBLOCKINFO",
@@ -537,8 +537,8 @@ message_init(message_t *msg, opcode_t opcode, small_idx_t size, userinfo_t info)
 	bcopy(TIFA_IDENT, msg->magic, sizeof(magic_t));
 	msg->version = TIFA_NETWORK_VERSION;
 	msg->opcode = opcode;
-	if (is_notar_node())
-		// this might change to (!is_sync_only() && !is_caches_only())
+	//if (is_notar_node())
+	if (!is_sync_only() && !is_caches_only())
 		msg->flags |= MESSAGE_FLAG_PEER;
 	msg->flags = htobe16(msg->flags);
 	msg->userinfo = info;

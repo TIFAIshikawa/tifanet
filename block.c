@@ -56,6 +56,8 @@
 #include "rxcache.h"
 #include "pact.h"
 
+#define BLOCKS_FILESIZE_MAX 268435456
+
 // 3 mmap'ed files
 static char *__blocks = NULL;
 static big_idx_t *__block_idxs = NULL;
@@ -126,9 +128,9 @@ blockchain_load(void)
 {
 	size_t sz;
 
-	sz = 2147483648;
+	sz = BLOCKS_FILESIZE_MAX;
 	__blocks = mmap_file("blocks/blocks0.bin", sz);
-	__block_idxs = mmap_file("blocks/blocks0.idx", (sz / 256) * 8);
+	__block_idxs = mmap_file("blocks/blocks0.idx", (sz * 8) / 256);
 	__last_block_idx = mmap_file("blocks/lastblock.idx", sizeof(big_idx_t));
 }
 
@@ -918,9 +920,14 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 	__block_poll_timer = NULL;
 
 	t = time(NULL);
-	if (t > be64toh(raw_block_last(&sz)->time) + 5)
-		message_broadcast(OP_GETBLOCK, NULL, 0,
-			htobe64(block_idx_last() + 1));
+	if (t > be64toh(raw_block_last(&sz)->time) + 5) {
+		lprintf("no blocks seen in the last 5 seconds, polling...");
+//		if (blockchain_is_updating())
+//			message_broadcast(OP_GETBLOCK, NULL, 0,
+//				htobe64(block_idx_last() + 1));
+//		else
+			blockchain_update();
+	}
 
 	block_poll_start();
 }
