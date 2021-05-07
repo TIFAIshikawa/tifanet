@@ -48,13 +48,14 @@
 #include <time.h>
 #include <sys/time.h>
 
-static const public_key_t empty_notar = { 0 };
 static public_key_t *__notars = NULL;
 static big_idx_t __notars_size = 0;
 static big_idx_t __notars_count = 0;
 static big_idx_t __next_notar_idx = 0;
 static int __is_notar = FALSE;
 static big_idx_t __notars_last_block_idx = 0;
+
+static public_key_t __notars_prev[2];
 
 static public_key_t *__pending_notars = NULL;
 static small_idx_t __pending_notars_base = 0;
@@ -98,13 +99,13 @@ notars(big_idx_t *num_notars)
 }
 
 static int
-node_is_notar()
+node_is_notar(void)
 {
 	return (__is_notar);
 }
 
 static int
-should_generate_block()
+should_generate_block(void)
 {
 	int res;
 
@@ -157,7 +158,7 @@ notar_add(public_key_t new_notar)
 		if (pubkey_compare(__notars[i], new_notar) == 0)
 			return;
 
-		if (pubkey_compare(__notars[i], (void *)empty_notar) == 0 &&
+		if (pubkey_compare(__notars[i], (void *)pubkey_zero) == 0 &&
 			first_empty == -1)
 			first_empty = i;
 	}
@@ -200,7 +201,7 @@ schedule_generate_block_retry(void)
 
 //	lprintf("should create block but no pacts, delaying");
 
-//	__notar_timer = timer_set(4000, notar_tick, NULL);
+//	__notar_timer = timer_set(3000, notar_tick, NULL);
 	__notar_timer = timer_set(100, notar_tick, NULL);
 }
 
@@ -227,12 +228,47 @@ notar_elect_next(void)
 	lprintf("next block %ju->%s (%d)", block_idx_last() + 1,
 		public_key_node_name(__notars[__next_notar_idx], name), idx);
 
+	bcopy(__notars_prev[0], __notars_prev[1], sizeof(public_key_t));
+	bcopy(__notars[__next_notar_idx], __notars_prev[0],
+		sizeof(public_key_t));
+
 	if (should_generate_block() && !blockchain_is_updating()) {
 		if (!has_pending_pacts())
 			schedule_generate_block_retry();
 		else
 			block_generate_next();
 	}
+}
+
+void
+notar_timeout_denounce(void)
+{
+	raw_block_timeout_t rbt;
+	public_key_t *self;
+
+	if (!node_is_notar())
+		return;
+
+	if (__notars_last_block_idx < 2)
+		return;
+
+	bzero(&rbt, sizeof(raw_block_timeout_t));
+	self = node_public_key();
+
+	if (pubkey_compare(self, __notars_prev[0]) == 0) {
+	}
+	if (pubkey_compare(self, __notars_prev[1]) == 0) {
+	}
+
+}
+
+void *
+notar_prev(big_idx_t idx)
+{
+	if (idx >= 2)
+		return ((void *)pubkey_zero);
+
+	return (__notars_prev[idx]);
 }
 
 void

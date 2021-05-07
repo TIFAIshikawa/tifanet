@@ -66,6 +66,8 @@ static big_idx_t *__last_block_idx = NULL;
 static raw_block_t *__raw_block_last = NULL;
 static size_t __raw_block_last_size = 0;
 
+static raw_block_timeout_t *__raw_block_timeout_tmp = NULL;
+
 static big_idx_t __getblocks_target_idx = 0;
 
 static int __blockchain_is_updating = 0;
@@ -414,6 +416,64 @@ raw_block_size(raw_block_t *raw_block, size_t limit)
 	return (res);
 }
 
+static int
+raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize)
+{
+	raw_block_timeout_t *rb;
+	time_t ct, bt, lbt;
+	size_t size;
+	void *crx;
+
+	if (blocksize != sizeof(raw_block_timeout_t))
+		return (FALSE);
+
+	rb = (raw_block_timeout_t *)raw_block;
+
+	ct = time(NULL);
+	bt = block_time(raw_block);
+	lbt = block_time(__raw_block_last);
+	if (bt > ct) {
+		lprintf("denounce timeout block with index %ju has time in "
+			"future: %ld vs %ld", block_idx(raw_block), bt, ct);
+		return (FALSE);
+	}
+	if (lbt + 19 != bt) {
+		lprintf("denounce timeout block with index %ju has invalid "
+			"time: %ld vs %ld", block_idx(raw_block), bt, lbt + 19);
+		return (FALSE);
+	}
+
+	if (pubkey_compare((void *)pubkey_zero, rb->notar[0]) == 0 &&
+		pubkey_compare((void *)pubkey_zero, rb->notar[1]) == 0) {
+		lprintf("denounce timeout block with index %ju has no notars",
+			block_idx(raw_block));
+		return (FALSE);
+	}
+
+	size = offsetof(raw_block_timeout_t, notar);
+	for (int i = 0; i < 2; i++) {
+		if (pubkey_compare((void *)pubkey_zero, rb->notar[i]) != 0) {
+			if (pubkey_compare(rb->notar[i], notar_prev(i)) != 0) {
+				lprintf("denounce timeout block with index %ju "
+					"has invalid notar %d", i,
+					block_idx(raw_block));
+				return (FALSE);
+			}
+			crx = keypair_verify_start(rb, size);
+			if (!keypair_verify_finalize(crx, rb->notar[i],
+					rb->signature[i])) {
+					lprintf("denounce timeout block has "
+						"incorrect signature %d, "
+						"index %ju", i,
+						block_idx(raw_block));
+					return (FALSE);
+			}
+		}
+	}
+
+	return (TRUE);
+}
+
 int
 raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 {
@@ -433,6 +493,10 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 			block_idx(raw_block), blocksize);
 		return (FALSE);
 	}
+
+	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
+		return (raw_block_timeout_validate(raw_block, blocksize));
+
 	size = raw_block_size(raw_block, blocksize);
 	if (blocksize != size) {
 		lprintf("block with index %ju has illegal size: %d vs %d",
@@ -445,12 +509,12 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	lbt = block_time(__raw_block_last);
 	if (bt > ct) {
 		lprintf("block with index %ju has time in future: %ld vs %ld",
-			bt, ct);
+			block_idx(raw_block), bt, ct);
 		return (FALSE);
 	}
 	if (lbt > bt) {
 		lprintf("block with index %ju has time earlier than previous "
-			"block: %ld vs %ld", bt, lbt);
+			"block: %ld vs %ld", block_idx(raw_block), bt, lbt);
 		return (FALSE);
 	}
 
@@ -558,11 +622,42 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	return (TRUE);
 }
 
+static void
+raw_block_timeout_process(raw_block_t *raw_block, size_t blocksize)
+{
+	raw_block_timeout_t *rb;
+
+	rb = (raw_block_timeout_t *)raw_block;
+
+	// check if only one of notars is filled. If so, save in
+	// __raw_block_timeout_tmp and wait for second notar broadcast.
+	// if this node is the second or first notar to sign, do so.
+	// if both are filled, save, remove offending notar and continue.
+	if (pubkey_compare((void *)pubkey_zero, rb->notar[0]) != 0 &&
+		pubkey_compare((void *)pubkey_zero, rb->notar[1]) != 0) {
+		if (__raw_block_timeout_tmp) {
+			free(__raw_block_timeout_tmp);
+			__raw_block_timeout_tmp = NULL;
+		}
+		notar_raw_block_add(raw_block);
+		return raw_block_write(raw_block, blocksize);
+	}
+
+	if (!__raw_block_timeout_tmp) {
+		__raw_block_timeout_tmp = malloc(blocksize);
+		bcopy(raw_block, __raw_block_timeout_tmp, blocksize);
+		return;
+	}
+}
+
 void
 raw_block_process(raw_block_t *raw_block, size_t blocksize)
 {
 	raw_pact_t *t;
 	size_t size;
+
+	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
+		return (raw_block_timeout_process(raw_block, blocksize));
 
 	// if this node created last this block, caches_*_add is done elsewhere
 	if (pubkey_compare(node_public_key(), raw_block->notar) != 0) {
@@ -929,6 +1024,8 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 		lprintf("no blocks seen in the last 5 seconds, polling...");
 		blockchain_update();
 	}
+	if (t > block_time(__raw_block_last) + 18)
+		notar_timeout_denounce();
 
 	block_poll_start();
 }

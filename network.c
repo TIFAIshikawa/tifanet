@@ -585,6 +585,26 @@ message_send_random(opcode_t opcode, void *payload, small_idx_t size,
 	return (message_send(&addr, opcode, payload, size, info));
 }
 
+static size_t
+message_send_list_with_callback(struct sockaddr_storage *addrs, size_t naddrs,
+	opcode_t opcode, void *payload, small_idx_t size, userinfo_t info,
+	event_callback_t callback)
+{
+	size_t res;
+	event_info_t *e;
+
+	res = 0;
+	for (size_t i = 0; i < naddrs; i++) {
+		if ((e = message_send(&addrs[i], opcode, payload, size,
+			info))) {
+			message_set_callback(e, callback);
+			res++;
+		}
+	}
+
+	return (res);
+}
+
 event_info_t *
 message_send_random_with_callback(opcode_t opcode, void *payload,
 	small_idx_t size, userinfo_t info, event_callback_t callback)
@@ -699,29 +719,50 @@ message_broadcast(opcode_t opcode, void *payload, small_idx_t size,
 		NULL));
 }
 
+static size_t
+__sockaddr_list_fill(struct sockaddr_storage *list, size_t size)
+{
+	struct sockaddr_in6 *a6;
+	struct sockaddr_in *a4;
+	size_t n, i;
+	size_t res;
+
+	bzero(list, sizeof(struct sockaddr_storage) * size);
+	
+	res = MIN(size, peerlist.list4_size + peerlist.list6_size);
+	if (res <= size) {
+		for (i = 0; i < peerlist.list4_size; i++) {
+			a4 = (struct sockaddr_in *)&peerlist.list4[i];
+			bcopy(a4, &list[i], sizeof(struct sockaddr_in));
+		}
+		n = i;
+		for (i = 0; i < peerlist.list6_size; i++) {
+			a6 = (struct sockaddr_in6 *)&peerlist.list6[i];
+			bcopy(a6, &list[n + i], sizeof(struct sockaddr_in6));
+		}
+
+		return (res);
+	}
+
+	for (i = 0, n = 0; i < res; i++)
+		if (peerlist_address_random(&list[i]))
+			n++;
+
+	return (n);
+}
+
 size_t
 message_broadcast_with_callback(opcode_t opcode, void *payload,
 	small_idx_t size, userinfo_t info, event_callback_t callback)
 {
-	event_info_t *req;
-	small_idx_t n;
-	size_t max;
+	struct sockaddr_storage list[100];
 	size_t res;
+	size_t n;
 
-	max = peerlist.list4_size + peerlist.list6_size;
-	n = MIN(100, max);
+	n = __sockaddr_list_fill(list, 100);
 
-	for (res = 0; res < n;) {
-		if ((req = message_send_random_with_callback(opcode,
-			payload, size, info, callback))) {
-//			res++;
-		}
-
-		// recalculate this, as the list might have changed due
-		// to a peer being removed from the list if it did not respond
-		n = MIN(100, peerlist.list4_size + peerlist.list6_size);
-res++;
-	}
+	res = message_send_list_with_callback(list, n, opcode, payload, size,
+		info, callback);
 
 	return (res);
 }

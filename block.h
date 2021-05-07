@@ -152,6 +152,12 @@ block_time(raw_block_t *raw_block)
 	return (be64toh(raw_block->time));
 }
 
+inline static flags_t
+block_flags(raw_block_t *raw_block)
+{
+	return (be64toh(raw_block->time));
+}
+
 inline static small_idx_t
 num_pacts(raw_block_t *raw_block)
 {

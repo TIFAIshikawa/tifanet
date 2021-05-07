@@ -45,6 +45,8 @@ typedef uint8_t signature_t[64];
 typedef uint8_t small_hash_t[16];
 typedef uint8_t hash_t[32];
 
+extern const public_key_t pubkey_zero;
+
 extern keypair_t *keypair_create(void);
 extern keypair_t *keypair_load(const char *filename);
 extern int keypair_save(keypair_t *keypair, const char *filename);

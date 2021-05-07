@@ -45,6 +45,8 @@ struct __keypair {
 	crypto_sign_state sign_state;
 };
 
+const public_key_t pubkey_zero = { 0 };
+
 keypair_t *
 keypair_create()
 {

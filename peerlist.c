@@ -131,7 +131,8 @@ peerlist_load()
 	peerlist_bootstrap();
 }
 
-void peerlist_save()
+void
+peerlist_save()
 {
 	FILE *f;
 	int w, len;

@@ -276,7 +276,7 @@ rxcache_raw_block_add(raw_block_t *raw_block)
 }
 
 static void
-rxcache_create()
+rxcache_create(void)
 {
 	FILE *f;
 	size_t sz;
@@ -333,7 +333,7 @@ rxcache_blocks_update(void)
 }
 
 static void
-rxcache_alloc()
+rxcache_alloc(void)
 {
 	if (__rxcache)
 		return;
@@ -346,7 +346,7 @@ rxcache_alloc()
 }
 
 void
-rxcache_load()
+rxcache_load(void)
 {
 	FILE *f;
 
@@ -362,7 +362,7 @@ rxcache_load()
 }
 
 void
-rxcache_reset()
+rxcache_reset(void)
 {
 	char *tmp;
 
