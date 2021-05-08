@@ -186,6 +186,30 @@ notar_add(public_key_t new_notar)
 }
 
 static void
+notar_remove(public_key_t remove_notar)
+{
+	raw_block_t *b;
+	big_idx_t i;
+	size_t sz;
+
+	for (i = 0; i < __notars_size; i++) {
+		if (pubkey_compare(__notars[i], remove_notar) == 0) {
+			bzero(__notars[i], sizeof(public_key_t));
+			qsort(__notars, __notars_size, sizeof(public_key_t),
+				notars_compare);
+			__notars_size--;
+
+			if (!__notars_size) {
+				b = block_load(0, &sz);
+				notar_add(b->notar);
+			}
+
+			return;
+		}
+	}
+}
+
+static void
 notar_tick(event_info_t *info, event_flags_t eventtype)
 {
 	__notar_timer = NULL;
@@ -303,7 +327,13 @@ notarscache_save(big_idx_t block_idx)
 void
 notar_raw_block_add(raw_block_t *raw_block)
 {
-	if (be64toh(raw_block->flags) & BLOCK_FLAG_NEW_NOTAR)
+	raw_block_timeout_t *rb;
+
+	rb = (raw_block_timeout_t *)raw_block;
+	if (block_flags(raw_block) & BLOCK_FLAG_DENOUNCE_NOTAR)
+		return notar_remove(rb->denounced_notar);
+
+	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR)
 		notar_add((void *)raw_block + sizeof(raw_block_t));
 
 	if (block_idx(raw_block) % CACHE_HASH_BLOCK_INTERVAL == 0)

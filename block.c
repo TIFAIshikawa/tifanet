@@ -450,6 +450,12 @@ raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize)
 		return (FALSE);
 	}
 
+	if (pubkey_compare(notar_next(), rb->denounced_notar) != 0) {
+		lprintf("illegal denounced notar for denounce timeout block "
+			"index %ju", block_idx(raw_block));
+		return (FALSE);
+	}
+
 	size = offsetof(raw_block_timeout_t, notar);
 	for (int i = 0; i < 2; i++) {
 		if (pubkey_compare((void *)pubkey_zero, rb->notar[i]) != 0) {
@@ -622,32 +628,58 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	return (TRUE);
 }
 
-static void
-raw_block_timeout_process(raw_block_t *raw_block, size_t blocksize)
+static int
+raw_block_timeout_process_block(raw_block_timeout_t *rt, size_t blocksize)
 {
-	raw_block_timeout_t *rb;
+	raw_block_t *rb;
 
-	rb = (raw_block_timeout_t *)raw_block;
+	rb = (raw_block_t *)rt;
 
-	// check if only one of notars is filled. If so, save in
-	// __raw_block_timeout_tmp and wait for second notar broadcast.
-	// if this node is the second or first notar to sign, do so.
-	// if both are filled, save, remove offending notar and continue.
-	if (pubkey_compare((void *)pubkey_zero, rb->notar[0]) != 0 &&
-		pubkey_compare((void *)pubkey_zero, rb->notar[1]) != 0) {
+	if (pubkey_compare((void *)pubkey_zero, rt->notar[0]) != 0 &&
+		pubkey_compare((void *)pubkey_zero, rt->notar[1]) != 0) {
+		notar_raw_block_add(rb);
+		raw_block_write(rb, blocksize);
 		if (__raw_block_timeout_tmp) {
 			free(__raw_block_timeout_tmp);
 			__raw_block_timeout_tmp = NULL;
 		}
-		notar_raw_block_add(raw_block);
-		return raw_block_write(raw_block, blocksize);
+
+		raw_block_broadcast(block_idx(rb));
+
+		return (TRUE);
 	}
+
+	return (FALSE);
+}
+
+static void
+raw_block_timeout_process(raw_block_t *raw_block, size_t blocksize)
+{
+	raw_block_timeout_t *rb;
+	raw_block_timeout_t *rt;
+
+	rb = (raw_block_timeout_t *)raw_block;
+
+	if (raw_block_timeout_process_block(rb, blocksize))
+		return;
 
 	if (!__raw_block_timeout_tmp) {
 		__raw_block_timeout_tmp = malloc(blocksize);
 		bcopy(raw_block, __raw_block_timeout_tmp, blocksize);
 		return;
 	}
+
+	rt = __raw_block_timeout_tmp;
+	for (int i = 0; i < 2; i++) {
+		if (pubkey_compare((void *)pubkey_zero, rb->notar[i]) == 0 &&
+			pubkey_compare((void *)pubkey_zero, rt->notar[i]) != 0){
+			bcopy(rt->notar[i], rb->notar[i], sizeof(public_key_t));
+			bcopy(rt->signature[i], rb->signature[i],
+				sizeof(signature_t));
+		}
+	}
+
+	raw_block_timeout_process_block(rt, blocksize);
 }
 
 void
@@ -863,6 +895,25 @@ raw_block_pacts(raw_block_t *raw_block)
 	return (res);
 }
 
+static void
+raw_block_timeout_print(raw_block_t *raw_block)
+{
+	raw_block_timeout_t *rb;
+	node_name_t node_name;
+
+	rb = (raw_block_timeout_t *)raw_block;
+
+	printf("\n");
+
+	public_key_node_name(rb->denounced_notar, node_name);
+	printf("  denounced_notar: %s\n", node_name);
+	printf("  notars:\n");
+	for (int i = 0; i < 2; i++) {
+		public_key_node_name(rb->notar[i], node_name);
+		printf("    - %s\n", node_name);
+	}
+}
+
 void
 raw_block_print(raw_block_t *raw_block)
 {
@@ -882,8 +933,16 @@ raw_block_print(raw_block_t *raw_block)
 	printf("  index: %ju\n", block_idx(raw_block));
 	printf("  time: %ju %s", be64toh(raw_block->time), ctime(&tm));
 	printf("  flags: %ju", be64toh(raw_block->flags));
-	if (be64toh(raw_block->flags) & BLOCK_FLAG_NEW_NOTAR)
+	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR)
 		printf(" BLOCK_FLAG_NEW_NOTAR");
+	if (block_flags(raw_block) & BLOCK_FLAG_DENOUNCE_NOTAR)
+		printf(" BLOCK_FLAG_DENOUNCE_NOTAR");
+
+	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT) {
+		printf(" BLOCK_FLAG_TIMEOUT");
+		return raw_block_timeout_print(raw_block);
+	}
+
 	printf("\n");
 	printf("  prev_block_hash: %s\n",
 		hash_str(raw_block->prev_block_hash, htmp));
