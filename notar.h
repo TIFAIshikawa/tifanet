@@ -44,11 +44,11 @@ extern void notar_pending_add(public_key_t new_notar);
 extern int notars_pending(void);
 extern uint8_t *notar_pending_next(void);
 
+extern int node_is_notar(void);
+
 extern void notar_start(void);
 
 extern void notar_elect_next(void);
-
-extern void notar_timeout_denounce(void);
 
 extern void *notar_prev(big_idx_t idx);
 

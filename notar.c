@@ -98,7 +98,7 @@ notars(big_idx_t *num_notars)
 	return (__notars);
 }
 
-static int
+int
 node_is_notar(void)
 {
 	return (__is_notar);
@@ -262,28 +262,6 @@ notar_elect_next(void)
 		else
 			block_generate_next();
 	}
-}
-
-void
-notar_timeout_denounce(void)
-{
-	raw_block_timeout_t rbt;
-	public_key_t *self;
-
-	if (!node_is_notar())
-		return;
-
-	if (__notars_last_block_idx < 2)
-		return;
-
-	bzero(&rbt, sizeof(raw_block_timeout_t));
-	self = node_public_key();
-
-	if (pubkey_compare(self, __notars_prev[0]) == 0) {
-	}
-	if (pubkey_compare(self, __notars_prev[1]) == 0) {
-	}
-
 }
 
 void *

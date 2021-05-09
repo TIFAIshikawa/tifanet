@@ -76,6 +76,10 @@ static event_info_t *__block_poll_timer = NULL;
 
 void raw_block_broadcast(big_idx_t index);
 void add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt);
+static int raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize);
+static int raw_block_timeout_process_block(raw_block_timeout_t *rt,
+	size_t blocksize);
+static void raw_block_timeout_process(raw_block_t *raw_block, size_t blocksize);
 
 big_idx_t
 block_idx_last()
@@ -414,6 +418,52 @@ raw_block_size(raw_block_t *raw_block, size_t limit)
 	}
 
 	return (res);
+}
+
+static void
+block_denounce_timeout_create(void)
+{
+	size_t sz, size, signsize;
+	raw_block_timeout_t rbt;
+	public_key_t *self;
+	raw_block_t *rb;
+	int filled = 0;
+
+	if (!node_is_notar())
+		return;
+
+	if (block_idx_last() < 2)
+		return;
+
+	rb = (raw_block_t *)&rbt;
+	size = sizeof(raw_block_timeout_t);
+
+	if (__raw_block_timeout_tmp)
+		bcopy(__raw_block_timeout_tmp, &rbt, size);
+	else
+		bzero(&rbt, sizeof(raw_block_timeout_t));
+	self = node_public_key();
+
+	if (!rbt.index) {
+		rbt.index = htobe64(block_idx_last() + 1);
+		rbt.time = block_time(raw_block_last(&sz)) + 18;
+		rbt.flags = htobe64(BLOCK_FLAG_TIMEOUT);
+		raw_block_hash(rb, size, rbt.prev_block_hash);
+		bcopy(notar_next(), rbt.denounced_notar, sizeof(public_key_t));
+	}
+	signsize = offsetof(raw_block_timeout_t, notar);
+	for (int i = 0; i < 2; i++) {
+		if (pubkey_compare(self, notar_prev(i)) != 0)
+			continue;
+
+		bcopy(self, rbt.notar[i], sizeof(public_key_t));
+		raw_block_sign(rb, signsize, rbt.signature[i]);
+		filled++;
+	}
+
+	if (filled)
+		if (raw_block_timeout_validate(rb, size))
+			raw_block_timeout_process(rb, size);
 }
 
 static int
@@ -1084,7 +1134,7 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 		blockchain_update();
 	}
 	if (t > block_time(__raw_block_last) + 18)
-		notar_timeout_denounce();
+		block_denounce_timeout_create();
 
 	block_poll_start();
 }
