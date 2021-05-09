@@ -40,7 +40,7 @@
 #include "config.h"
 #include "pact.h"
 
-enum block_flags {
+enum block_flags_t {
 	BLOCK_FLAG_NEW_NOTAR		= (1LL << 0),	// Block introduces
 							// new notar
 	BLOCK_FLAG_DENOUNCE_NOTAR	= (1LL << 1),	// Block is trailed by
@@ -155,7 +155,7 @@ block_time(raw_block_t *raw_block)
 inline static flags_t
 block_flags(raw_block_t *raw_block)
 {
-	return (be64toh(raw_block->time));
+	return (be64toh(raw_block->flags));
 }
 
 inline static small_idx_t
