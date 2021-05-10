@@ -296,13 +296,13 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_BLOCKANNOUNCE) ||
 		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_NOTARANNOUNCE)) {
 #ifdef DEBUG_ALLOC
-lprintf("NOT FREEING USERDATA %p nev=%p info=%p opcode=%s type=%d", nev->userdata, nev, info, opcode_names[opcode], nev->type);
+		lprintf("NOT FREEING USERDATA %p", nev->userdata);
 #endif
 		return;
 	}
 
 #ifdef DEBUG_ALLOC
-	lprintf("-USERDATA %p MESSAGE_READ opcode=%s type=%hd state=%hd nev=%p info=%p nev->onclose=%p info->onclose=%p", nev->userdata, opcode_names[opcode], nev->type, nev->state, nev, info, nev->on_close, info->on_close);
+	lprintf("-USERDATA %p MESSAGE_READ", nev->userdata);
 #endif
 	free(nev->userdata);
 }
@@ -379,7 +379,7 @@ message_read(event_info_t *info, event_flags_t eventtype)
 
 			nev->userdata = malloc(be32toh(msg->payload_size));
 #ifdef DEBUG_ALLOC
-			lprintf("+USERDATA %p MESSAGE_READ type=%hd state=%hd nev=%p info=%p nev->onclose=%p info->onclose=%p", nev->userdata, nev->type, nev->state, nev, info, nev->on_close, info->on_close);
+			lprintf("+USERDATA %p MESSAGE_READ", nev->userdata);
 #endif
 			if (be16toh(msg->flags) & MESSAGE_FLAG_PEER)
 				peerlist_add(&nev->remote_addr);
@@ -522,7 +522,7 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 #ifdef DEBUG_ALLOC
 network_event_t *nv;
 nv = res->payload;
-	lprintf("+USERDATA %p REQUEST_SEND nev=%p info=%p nev->on_close=%p info->on_close=%p type=%d state=%d", nev.userdata, nv, res, nv->on_close, res->on_close, nv->type, nv->state);
+	lprintf("+USERDATA %p REQUEST_SEND", nev.userdata);
 #endif
 
 	socket_set_timeout(fd, 10);
@@ -569,11 +569,8 @@ message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 
 	if ((res = request_send(addr, &msg, payload))) {
 #ifdef DEBUG_NETWORK
-network_event_t *nev;
-nev = res->payload;
-		lprintf("sending message %s to %s (nev=%p info=%p nev->on_close=%p info->on_close=%p)", opcode_names[opcode], peername(addr), nev, res, nev->on_close, res->on_close);
-//		lprintf("sending message %s to %s", opcode_names[opcode],
-//			peername(addr));
+		lprintf("sending message %s to %s", opcode_names[opcode],
+			peername(addr));
 #endif
 		return (res);
 	}
