@@ -72,8 +72,8 @@ static struct ifaddrs *__ifaddrs = NULL;
 static void accept_connection(event_info_t *, event_flags_t);
 static void message_event_on_close(event_info_t *, event_flags_t);
 
-static event_info_t *__listen_info = NULL;
-static int __ipv6_capable = 0;
+static event_info_t *__listen_info_ipv4 = NULL;
+static event_info_t *__listen_info_ipv6 = NULL;
 
 static void socket_set_async(int fd)
 {
@@ -134,7 +134,7 @@ peername_r(struct sockaddr_storage *addr, char *dst)
 int
 network_is_ipv6_capable(void)
 {
-	return (__ipv6_capable);
+	return (__listen_info_ipv6 != NULL);
 }
 
 static int
@@ -151,16 +151,18 @@ socket_create(int domain)
 	return (res);
 }
 
-static int
+static event_info_t *
 __listen_socket_open(struct sockaddr_storage *addr)
 {
+	event_info_t *res;
 	socklen_t len;
+	char *iptxt;
 	int opt = 1;
 	int fd;
 
 	switch (addr->ss_family) {
-	case AF_INET: len = sizeof(struct sockaddr_in); break;
-	case AF_INET6: len = sizeof(struct sockaddr_in6); break;
+	case AF_INET: len = sizeof(struct sockaddr_in); iptxt = "IPv4"; break;
+	case AF_INET6: len = sizeof(struct sockaddr_in6); iptxt = "IPv6"; break;
 	default: return (FALSE);
 	}
 
@@ -174,42 +176,46 @@ __listen_socket_open(struct sockaddr_storage *addr)
 
 	if (bind(fd, (struct sockaddr *)addr, len) == -1) {
 		close(fd);
-		FAILBOOL("listen_socket_open: bind: %s", strerror(errno));
+		FAILBOOL("listen_socket_open: bind %s: %s", iptxt,
+			strerror(errno));
 	}
 
 	if (listen(fd, SOMAXCONN) == -1) {
 		close(fd);
-		FAILBOOL("listen_socket_open: listen: %s", strerror(errno));
+		FAILBOOL("listen_socket_open: listen %s: %s", iptxt,
+			strerror(errno));
 	}
 
-	__listen_info = event_add(fd, EVENT_READ, accept_connection,
+	res = event_add(fd, EVENT_READ, accept_connection,
 				NULL, 0);
 
-	lprintf("listening for connections...");
+	lprintf("listening for %s connections...", iptxt);
 
-	return (TRUE);
+	return (res);
 }
 
 void
 listen_socket_open()
 {
-	struct sockaddr_in a4;
+	struct sockaddr_storage *s;
 	struct sockaddr_in6 a6;
-
-	bzero(&a6, sizeof(struct sockaddr_in6));
-	a6.sin6_family = AF_INET6;
-	a6.sin6_addr = in6addr_any;
-	a6.sin6_port = htons(TIFA_NETWORK_PORT);
-	if (__listen_socket_open((struct sockaddr_storage *)&a6)) {
-		__ipv6_capable = 1;
-		return;
-	}
+	struct sockaddr_in a4;
 
 	bzero(&a4, sizeof(struct sockaddr_in));
 	a4.sin_family = AF_INET;
 	a4.sin_addr.s_addr = INADDR_ANY;
 	a4.sin_port = htons(TIFA_NETWORK_PORT);
-	if (!__listen_socket_open((struct sockaddr_storage *)&a4))
+	s = (struct sockaddr_storage *)&a4;
+	__listen_info_ipv4 = __listen_socket_open(s);
+
+	bzero(&a6, sizeof(struct sockaddr_in6));
+	a6.sin6_family = AF_INET6;
+	a6.sin6_addr = in6addr_any;
+	a6.sin6_port = htons(TIFA_NETWORK_PORT);
+	s = (struct sockaddr_storage *)&a6;
+	__listen_info_ipv6 = __listen_socket_open(s);
+
+	if (!__listen_info_ipv4 && !__listen_info_ipv6)
 		FAILTEMP("could open neither IPv6 nor IPv4 listen sockets, "
 			"exiting");
 }
@@ -708,7 +714,7 @@ is_nonroutable_address(struct sockaddr_storage *addr)
 		break;
 	}
 
-	return (TRUE);
+	return (FALSE);
 #endif
 }
 
@@ -777,7 +783,7 @@ daemon_start(void)
 {
 	size_t sz;
 
-	if (__listen_info)
+	if (__listen_info_ipv4 || __listen_info_ipv6)
 		return;
 
 	lprintf("Starting daemon...");
