@@ -57,6 +57,7 @@ static int usage(int deliberate);
 static int opt_wallets(int argc, char *argv[]);
 static int opt_addresses(int argc, char *argv[]);
 static int opt_blocks(int argc, char *argv[]);
+static int opt_blockhash(int argc, char *argv[]);
 static int opt_history(int argc, char *argv[]);
 static int opt_send(int argc, char *argv[]);
 static int opt_node(int argc, char *argv[]);
@@ -245,6 +246,43 @@ opt_blocks(int argc, char *argv[])
 		}
 		raw_block = block_load(idx, &sz);
 		raw_block_print(raw_block);
+		break;
+	default:
+		return usage(FALSE);
+	}
+
+	return (0);
+}
+
+static int
+opt_blockhash(int argc, char *argv[])
+{
+	size_t sz;
+	hash_t hash;
+	big_idx_t idx;
+	raw_block_t *raw_block;
+	char htmp[HASH_STR_LENGTH];
+
+	if (caches_only) {
+		printf("blocks option is not available on thin clients.\n");
+		return (EX_USAGE);
+	}
+
+	switch (argc) {
+	case 0:
+		raw_block = raw_block_last(&sz);
+		raw_block_hash(raw_block, sz, hash);
+		printf("%s\n", hash_str(hash, htmp));
+		break;
+	case 1:
+		idx = strtoimax(argv[0], NULL, 10);
+		if (idx > block_idx_last()) {
+			printf("error: index out of range: %ju\n", idx);
+			return (EX_DATAERR);
+		}
+		raw_block = block_load(idx, &sz);
+		raw_block_hash(raw_block, sz, hash);
+		printf("%s\n", hash_str(hash, htmp));
 		break;
 	default:
 		return usage(FALSE);
@@ -620,6 +658,8 @@ exit(1);
 		return opt_history(argc, argv);
 	else if (strcmp(opt, "blocks") == 0 || strcmp(opt, "block") == 0)
 		return opt_blocks(argc, argv);
+	else if (strcmp(opt, "blockhash") == 0)
+		return opt_blockhash(argc, argv);
 	else if (strcmp(opt, "send") == 0)
 		return opt_send(argc, argv);
 	else if (strcmp(opt, "node") == 0)

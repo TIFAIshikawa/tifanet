@@ -47,9 +47,6 @@
 #include "log.h"
 
 static int __eventfd;
-#ifdef __linux__
-static int __timerfd = -1;
-#endif
 
 #define NUM_EVENTS 128
 static event_info_t *__events_to_remove[NUM_EVENTS];
@@ -149,11 +146,7 @@ timer_set(uint64_t msec_delay, event_callback_t callback, void *payload)
 	struct itimerspec ts;
 	struct epoll_event event;
 
-	if (__timerfd == -1) {
-		__timerfd = timerfd_create(CLOCK_REALTIME, 0);
-		first = TRUE;
-	}
-	res->ident = __timerfd;
+	res->ident = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC);
 
 	ts.it_interval.tv_sec = 0;
 	ts.it_interval.tv_nsec = 0;
@@ -166,8 +159,7 @@ timer_set(uint64_t msec_delay, event_callback_t callback, void *payload)
 	event.data.fd = res->ident;
 	event.data.ptr = res;
 
-	if (epoll_ctl(__eventfd, first ? EPOLL_CTL_ADD : EPOLL_CTL_MOD,
-		res->ident, &event) == -1)
+	if (epoll_ctl(__eventfd, EPOLL_CTL_ADD, res->ident, &event) == -1)
 		FAIL(EX_TEMPFAIL, "event_add: %s\n", strerror(errno));
 #else
 	struct kevent event;
@@ -297,9 +289,18 @@ timer_remove(event_info_t *info)
 		FAIL(EX_SOFTWARE, "timer_remove: info %p is not a timer", info);
 
 #ifdef __linux__
+	struct epoll_event event;
 	char buf[1];
 
 	read(info->ident, buf, 1); // disarm timer
+
+	bzero(&event, sizeof(struct epoll_event));
+	event.events = EVENT_READ;
+	event.data.fd = info->ident;
+	event.data.ptr = info;
+
+	if (epoll_ctl(__eventfd, EPOLL_CTL_DEL, info->ident, &event) == -1)
+		FAIL(EX_TEMPFAIL, "timer_remove: %s\n", strerror(errno));
 #endif
 
 	event_free(info);

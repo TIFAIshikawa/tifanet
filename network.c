@@ -201,19 +201,19 @@ listen_socket_open()
 	struct sockaddr_in6 a6;
 	struct sockaddr_in a4;
 
-	bzero(&a4, sizeof(struct sockaddr_in));
-	a4.sin_family = AF_INET;
-	a4.sin_addr.s_addr = INADDR_ANY;
-	a4.sin_port = htons(TIFA_NETWORK_PORT);
-	s = (struct sockaddr_storage *)&a4;
-	__listen_info_ipv4 = __listen_socket_open(s);
-
 	bzero(&a6, sizeof(struct sockaddr_in6));
 	a6.sin6_family = AF_INET6;
 	a6.sin6_addr = in6addr_any;
 	a6.sin6_port = htons(TIFA_NETWORK_PORT);
 	s = (struct sockaddr_storage *)&a6;
 	__listen_info_ipv6 = __listen_socket_open(s);
+
+	bzero(&a4, sizeof(struct sockaddr_in));
+	a4.sin_family = AF_INET;
+	a4.sin_addr.s_addr = INADDR_ANY;
+	a4.sin_port = htons(TIFA_NETWORK_PORT);
+	s = (struct sockaddr_storage *)&a4;
+	__listen_info_ipv4 = __listen_socket_open(s);
 
 	if (!__listen_info_ipv4 && !__listen_info_ipv6)
 		FAILTEMP("could open neither IPv6 nor IPv4 listen sockets, "
