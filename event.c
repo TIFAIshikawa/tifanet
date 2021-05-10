@@ -187,9 +187,7 @@ timer_cancel(event_info_t *info)
 	if (!(info->flags & EVENT_TIMER))
 		FAIL(EX_SOFTWARE, "timer_cancel: info %p is not a timer", info);
 
-#ifdef __linux__
-	// TODO
-#else
+#ifndef __linux__
 	EV_SET(&event, info->ident, EVFILT_TIMER, EV_DELETE, 0, 0, info);
 
 	if (kevent(__eventfd, &event, 1, NULL, 0, NULL) == -1)
@@ -301,6 +299,8 @@ timer_remove(event_info_t *info)
 
 	if (epoll_ctl(__eventfd, EPOLL_CTL_DEL, info->ident, &event) == -1)
 		FAIL(EX_TEMPFAIL, "timer_remove: %s\n", strerror(errno));
+
+	close(info->ident);
 #endif
 
 	event_free(info);
