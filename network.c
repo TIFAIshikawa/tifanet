@@ -281,7 +281,8 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 	msg = network_message(info);
 	opcode = msg->opcode;
 	if ((nev->type == NETWORK_EVENT_TYPE_SERVER && opcode == OP_GETBLOCK) ||
-		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_BLOCKANNOUNCE)) {
+		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_BLOCKANNOUNCE) ||
+		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_NOTARANNOUNCE)) {
 #ifdef DEBUG_ALLOC
 lprintf("NOT FREEING USERDATA %p nev=%p info=%p opcode=%s type=%d", nev->userdata, nev, info, opcode_names[opcode], nev->type);
 #endif
@@ -537,8 +538,8 @@ message_init(message_t *msg, opcode_t opcode, small_idx_t size, userinfo_t info)
 	bcopy(TIFA_IDENT, msg->magic, sizeof(magic_t));
 	msg->version = TIFA_NETWORK_VERSION;
 	msg->opcode = opcode;
-	//if (is_notar_node())
-	if (!is_sync_only() && !is_caches_only())
+	//if (config_is_notar_node())
+	if (!config_is_sync_only() && !config_is_caches_only())
 		msg->flags |= MESSAGE_FLAG_PEER;
 	msg->flags = htobe16(msg->flags);
 	msg->userinfo = info;
@@ -722,8 +723,8 @@ message_broadcast(opcode_t opcode, void *payload, small_idx_t size,
 static size_t
 __sockaddr_list_fill(struct sockaddr_storage *list, size_t size)
 {
-	struct sockaddr_in6 *a6;
-	struct sockaddr_in *a4;
+	struct sockaddr_in6 a6;
+	struct sockaddr_in a4;
 	size_t n, i;
 	size_t res;
 
@@ -732,13 +733,17 @@ __sockaddr_list_fill(struct sockaddr_storage *list, size_t size)
 	res = MIN(size, peerlist.list4_size + peerlist.list6_size);
 	if (res <= size) {
 		for (i = 0; i < peerlist.list4_size; i++) {
-			a4 = (struct sockaddr_in *)&peerlist.list4[i];
-			bcopy(a4, &list[i], sizeof(struct sockaddr_in));
+			bzero(&a4, sizeof(struct sockaddr_in));
+			a4.sin_family = AF_INET;
+			a4.sin_addr = peerlist.list4[i];
+			bcopy(&a4, &list[i], sizeof(struct sockaddr_in));
 		}
 		n = i;
 		for (i = 0; i < peerlist.list6_size; i++) {
-			a6 = (struct sockaddr_in6 *)&peerlist.list6[i];
-			bcopy(a6, &list[n + i], sizeof(struct sockaddr_in6));
+			bzero(&a6, sizeof(struct sockaddr_in6));
+			a6.sin6_family = AF_INET6;
+			a6.sin6_addr = peerlist.list6[i];
+			bcopy(&a6, &list[n + i], sizeof(struct sockaddr_in6));
 		}
 
 		return (res);

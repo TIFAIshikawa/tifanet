@@ -37,6 +37,7 @@
 //#define DEBUG_NETWORK 1
 //#define DEBUG_ALLOC 1
 #define DEBUG_PEERLIST 1
+#define DEUBUG_NOTAR 1
 /*
  * Roadmap
  * ver: [eta date] description
@@ -102,13 +103,13 @@ extern char *config_path_r(char *buffer, const char *filename);
 extern FILE *config_fopen(const char *filename, const char * restrict mode);
 extern int config_unlink(const char *filename);
 
-extern void set_is_notar_node(int is_notar);
-extern int is_notar_node(void);
+extern void config_set_notar_node(int is_notar);
+extern int config_is_notar_node(void);
 
-extern void set_sync_only(int sync_only);
-extern int is_sync_only(void);
+extern void config_set_sync_only(int sync_only);
+extern int config_is_sync_only(void);
 
-extern void set_caches_only(int caches_only);
-extern int is_caches_only(void);
+extern void config_set_caches_only(int caches_only);
+extern int config_is_caches_only(void);
 
 #endif /* __TIFA_CONFIG_H */

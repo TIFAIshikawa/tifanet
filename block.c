@@ -84,7 +84,7 @@ static void raw_block_timeout_process(raw_block_t *raw_block, size_t blocksize);
 big_idx_t
 block_idx_last()
 {
-	if (is_caches_only()) {
+	if (config_is_caches_only()) {
 		if (__raw_block_last)
 			return (block_idx(__raw_block_last));
 		else
@@ -342,7 +342,7 @@ raw_block_write(raw_block_t *raw_block, size_t blocksize)
 	size_t bsize;
 	char *dst;
 
-	if (is_caches_only()) {
+	if (config_is_caches_only()) {
 		if (__raw_block_last)
 			free(__raw_block_last);
 		__raw_block_last = malloc(blocksize);
@@ -575,7 +575,7 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	}
 
 	// check block index, if we have a last block (in case of caches only)
-	if (!is_caches_only() || (is_caches_only() && __raw_block_last)) {
+	if (!config_is_caches_only() || (config_is_caches_only() && __raw_block_last)) {
 		if (block_idx(__raw_block_last) == block_idx(raw_block)) {
 			lprintf("already have block with index %ju",
 				block_idx(raw_block));
@@ -635,7 +635,7 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 		else
 			err = raw_pact_validate(t);
 
-		if (is_caches_only() && err == ERR_RX_SPENT &&
+		if (config_is_caches_only() && err == ERR_RX_SPENT &&
 			rxcache_last_block_idx() == block_idx(raw_block))
 			err = 0;
 		switch (err) {
@@ -1104,11 +1104,11 @@ getblocks(big_idx_t target_idx)
 
 	lprintf("fully synchronized");
 
-	if (is_sync_only())
+	if (config_is_sync_only())
 		exit(0);
 
 	notar_elect_next();
-	if (!is_caches_only())
+	if (!config_is_caches_only())
 		daemon_start();
 	return;
 }

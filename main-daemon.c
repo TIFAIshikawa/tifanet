@@ -57,7 +57,7 @@ save_state(int signal)
 {
 	big_idx_t idx;
 
-	if (is_caches_only()) {
+	if (config_is_caches_only()) {
 		idx = be64toh(block_idx_last());
 		rxcache_save(idx);
 		notarscache_save(idx);
@@ -101,10 +101,10 @@ main(int argc, char *argv[])
 			should_fork = 0;
 			break;
 		case 'n':
-			set_is_notar_node(TRUE);
+			config_set_notar_node(TRUE);
 			break;
 		case 's':
-			set_sync_only(TRUE);
+			config_set_sync_only(TRUE);
 			break;
 		case 'S':
 			// undocumented: only use when network sync is
@@ -112,7 +112,7 @@ main(int argc, char *argv[])
 			skip_update = 1;
 			break;
 		case 'c':
-			set_caches_only(TRUE);
+			config_set_caches_only(TRUE);
 			break;
 		case 'h':
 			return usage(argv[0], TRUE);
@@ -121,12 +121,12 @@ main(int argc, char *argv[])
 		}
 	}
 
-	if (is_sync_only() && is_notar_node()) {
+	if (config_is_sync_only() && config_is_notar_node()) {
 		fprintf(stderr, "tifanetd: -s and -n options cannot "
 			"be enabled simultaneously\n");
 		exit(EX_USAGE);
 	}
-	if (is_caches_only() && is_notar_node()) {
+	if (config_is_caches_only() && config_is_notar_node()) {
 		fprintf(stderr, "tifanetd: -c and -n options cannot "
 			"be enabled simultaneously\n");
 		exit(EX_USAGE);
@@ -150,7 +150,7 @@ main(int argc, char *argv[])
 	wallets_load();
 	peerlist_load();
 
-	if (is_caches_only()) {
+	if (config_is_caches_only()) {
 		blocks_remove();
 	} else {
 		blockchain_load();
@@ -200,7 +200,7 @@ main(int argc, char *argv[])
 
 	peerlist_request_broadcast();
 
-	if (is_caches_only()) {
+	if (config_is_caches_only()) {
 		cache_download();
 	} else {
 		if (skip_update) {

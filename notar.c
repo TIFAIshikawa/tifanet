@@ -108,7 +108,10 @@ static int
 should_generate_block(void)
 {
 	int res;
+	node_name_t n1, n2;
 
+	public_key_node_name(__notars[__next_notar_idx], n1);
+	public_key_node_name(node_public_key(), n2);
 	res = pubkey_compare(__notars[__next_notar_idx], node_public_key());
 
 	return (res == 0);
@@ -141,13 +144,16 @@ notar_announce(void)
 void
 notar_start(void)
 {
-	if (!node_is_notar() && is_notar_node())
+	if (!node_is_notar() && config_is_notar_node())
 		notar_announce();
 }
 
 static void
 notar_add(public_key_t new_notar)
 {
+#ifdef DEBUG_NOTAR
+	node_name_t node_name;
+#endif
 	big_idx_t i;
 	int64_t first_empty = -1;
 
@@ -163,6 +169,10 @@ notar_add(public_key_t new_notar)
 			first_empty = i;
 	}
 
+#ifdef DEBUG_NOTAR
+	public_key_node_name(new_notar, node_name);
+	lprintf("notar_add: adding %s", node_name);
+#endif
 	if (first_empty != -1) {
 		bcopy(new_notar, __notars[first_empty], sizeof(public_key_t));
 		__notars_count++;
@@ -188,12 +198,19 @@ notar_add(public_key_t new_notar)
 static void
 notar_remove(public_key_t remove_notar)
 {
+#ifdef DEBUG_NOTAR
+	node_name_t node_name;
+#endif
 	raw_block_t *b;
 	big_idx_t i;
 	size_t sz;
 
 	for (i = 0; i < __notars_size; i++) {
 		if (pubkey_compare(__notars[i], remove_notar) == 0) {
+#ifdef DEBUG_NOTAR
+			public_key_node_name(new_notar, node_name);
+			lprintf("notar_remove: removing %s", node_name);
+#endif
 			bzero(__notars[i], sizeof(public_key_t));
 			qsort(__notars, __notars_size, sizeof(public_key_t),
 				notars_compare);
@@ -225,8 +242,8 @@ schedule_generate_block_retry(void)
 
 //	lprintf("should create block but no pacts, delaying");
 
-//	__notar_timer = timer_set(3000, notar_tick, NULL);
-	__notar_timer = timer_set(100, notar_tick, NULL);
+	__notar_timer = timer_set(3000, notar_tick, NULL);
+//	__notar_timer = timer_set(100, notar_tick, NULL);
 }
 
 void

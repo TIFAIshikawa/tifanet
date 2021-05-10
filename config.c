@@ -124,37 +124,37 @@ config_unlink(const char *filename)
 }
 
 void
-set_is_notar_node(int is_notar)
+config_set_notar_node(int is_notar)
 {
 	__is_notar_node = is_notar;
 }
 
 int
-is_notar_node()
+config_is_notar_node()
 {
 	return (__is_notar_node);
 }
 
 void
-set_sync_only(int sync_only)
+config_set_sync_only(int sync_only)
 {
 	__sync_only = sync_only;
 }
 
 int
-is_sync_only(void)
+config_is_sync_only(void)
 {
 	return (__sync_only);
 }
 
 void
-set_caches_only(int caches_only)
+config_set_caches_only(int caches_only)
 {
 	__caches_only = caches_only;
 }
 
 int
-is_caches_only(void)
+config_is_caches_only(void)
 {
 	return (__caches_only);
 }
