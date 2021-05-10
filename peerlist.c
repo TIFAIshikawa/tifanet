@@ -295,7 +295,8 @@ peerlist_add_ipv6(struct in6_addr addr)
 	inet_ntop(AF_INET6, &addr, tmp, INET6_ADDRSTRLEN);
 #endif
 
-	a6.sin6_family = AF_INET;
+	bzero(&a6, sizeof(struct sockaddr_in6));
+	a6.sin6_family = AF_INET6;
 	a6.sin6_addr = addr;
 
 	if (is_local_interface_address((struct sockaddr_storage *)&a6)) {
