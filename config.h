@@ -36,7 +36,7 @@
 
 //#define DEBUG_NETWORK 1
 //#define DEBUG_ALLOC 1
-#define DEBUG_PEERLIST 1
+//#define DEBUG_PEERLIST 1
 #define DEUBUG_NOTAR 1
 /*
  * Roadmap

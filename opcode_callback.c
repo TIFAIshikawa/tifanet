@@ -424,8 +424,6 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 	}
 
 	message_cancel(info);
-
-	getblocks(0);
 }
 
 void

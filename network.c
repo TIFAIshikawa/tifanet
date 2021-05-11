@@ -305,6 +305,9 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 	lprintf("-USERDATA %p MESSAGE_READ", nev->userdata);
 #endif
 	free(nev->userdata);
+
+	if (nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_GETBLOCK)
+		getblocks(0);
 }
 
 static int
