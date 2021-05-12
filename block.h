@@ -115,6 +115,7 @@ extern raw_block_t *block_finalize(block_t *block, size_t *blocksize);
 
 extern void block_free(block_t *block);
 
+extern void *raw_block_new_notar(raw_block_t *raw_block);
 extern raw_pact_t *raw_block_pacts(raw_block_t *block);
 extern raw_pact_t *pact_for_rx_idx(raw_block_t *block, small_idx_t rx_idx);
 

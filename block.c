@@ -292,6 +292,7 @@ static block_t *
 block_create(void)
 {
 	block_t *res;
+	void *pn;
 
 	res = block_alloc();
 
@@ -303,11 +304,11 @@ if (__raw_block_last) {
 		res->prev_block_hash);
 }
 
-	res->flags |= notars_pending() ? BLOCK_FLAG_NEW_NOTAR : 0;
+	pn = notar_pending_next();
+	res->flags |= pn != NULL ? BLOCK_FLAG_NEW_NOTAR : 0;
 	bcopy(node_public_key(), res->notar, sizeof(public_key_t));
-	if (notars_pending())
-		bcopy(notar_pending_next(), res->new_notar,
-			sizeof(public_key_t));
+	if (pn)
+		bcopy(pn, res->new_notar, sizeof(public_key_t));
 
 	return (res);
 }
@@ -537,6 +538,8 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	void *crx;
 	hash_t pbh;
 	big_idx_t idx;
+	node_name_t nn;
+	void *new_notar;
 	signature_t sig;
 	time_t ct, bt, lbt;
 	raw_pact_t *t, *tt;
@@ -622,6 +625,21 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 		return (FALSE);
 	}
 	bcopy(sig, raw_block->signature, sizeof(signature_t));
+
+	if ((new_notar = raw_block_new_notar(raw_block))) {
+		if (pubkey_compare(new_notar, (void *)pubkey_zero) == 0) {
+			lprintf("block tried adding invalid notar %s, index "
+				"%ju", public_key_node_name(new_notar, nn),
+				block_idx(raw_block));
+			return (FALSE);
+		}
+		if (notar_exists(new_notar)) {
+			lprintf("block tried adding existing notar %s, index "
+				"%ju", public_key_node_name(new_notar, nn),
+				block_idx(raw_block));
+			return (FALSE);
+		}
+	}
 
 	// check pacts
 	t = raw_block_pacts(raw_block);
@@ -931,6 +949,15 @@ block_free(block_t *block)
 	lprintf("-BLOCK %p", block);
 #endif
 	free(block);
+}
+
+void *
+raw_block_new_notar(raw_block_t *raw_block)
+{
+	if (!(block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR))
+		return (NULL);
+
+	return ((void *)raw_block + sizeof(raw_block_t));
 }
 
 raw_pact_t *

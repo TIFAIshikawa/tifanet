@@ -48,6 +48,8 @@
 #include <time.h>
 #include <sys/time.h>
 
+#define PENDING_NOTARS_MAX 100
+
 static public_key_t *__notars = NULL;
 static big_idx_t __notars_size = 0;
 static big_idx_t __notars_count = 0;
@@ -67,6 +69,7 @@ static event_info_t *__notar_announce_timer = NULL;
 
 static void notar_tick(event_info_t *info, event_flags_t eventtype);
 static void schedule_generate_block_retry(void);
+static void notar_pending_remove(public_key_t new_notar);
 
 big_idx_t
 notars_last_block_idx(void)
@@ -148,12 +151,22 @@ notar_start(void)
 		notar_announce();
 }
 
+int
+notar_exists(public_key_t notar)
+{
+	for (big_idx_t i = 0; i < __notars_size; i++) {
+		if (pubkey_compare(__notars[i], notar) == 0)
+			return (TRUE);
+	}
+
+	return (FALSE);
+}
+
 static void
 notar_add(public_key_t new_notar)
 {
-#ifdef DEBUG_NOTAR
 	node_name_t node_name;
-#endif
+
 	big_idx_t i;
 	int64_t first_empty = -1;
 
@@ -161,13 +174,18 @@ notar_add(public_key_t new_notar)
 		__is_notar = TRUE;
 
 	for (i = 0; i < __notars_size; i++) {
-		if (pubkey_compare(__notars[i], new_notar) == 0)
+		if (pubkey_compare(__notars[i], new_notar) == 0) {
+			lprintf("notar_add: attempted to add existing notar %s",
+				public_key_node_name(new_notar, node_name));
 			return;
+		}
 
 		if (pubkey_compare(__notars[i], (void *)pubkey_zero) == 0 &&
 			first_empty == -1)
 			first_empty = i;
 	}
+
+	notar_pending_remove(new_notar);
 
 #ifdef DEBUG_NOTAR
 	public_key_node_name(new_notar, node_name);
@@ -204,6 +222,9 @@ notar_remove(public_key_t remove_notar)
 	raw_block_t *b;
 	big_idx_t i;
 	size_t sz;
+
+	if (pubkey_compare(node_public_key(), remove_notar) == 0)
+		__is_notar = FALSE;
 
 	for (i = 0; i < __notars_size; i++) {
 		if (pubkey_compare(__notars[i], remove_notar) == 0) {
@@ -397,8 +418,8 @@ notarscache_load(void)
 	if (__notars)
 		return;
 
-	__pending_notars = calloc(1, sizeof(public_key_t) * 100);
-	__pending_notars_size = 100;
+	__pending_notars = calloc(1, sizeof(public_key_t) * PENDING_NOTARS_MAX);
+	__pending_notars_size = PENDING_NOTARS_MAX;
 
 	if (!(f = config_fopen("blocks/notarscache.bin", "r"))) {
 		notarscache_create();
@@ -408,10 +429,14 @@ notarscache_load(void)
 	}
 }
 
-int
-notars_pending(void)
+static int
+notar_pending_exists(public_key_t notar)
 {
-	return (__pending_notars_count != 0);
+	for (size_t i = 0; i < PENDING_NOTARS_MAX; i++)
+		if (pubkey_compare(__pending_notars[i], notar) == 0)
+			return (TRUE);
+
+	return (FALSE);
 }
 
 void
@@ -420,18 +445,37 @@ notar_pending_add(public_key_t new_notar)
 	node_name_t notarname;
 	small_idx_t idx;
 
-	if (__pending_notars_count >= 100)
+	if (__pending_notars_count >= PENDING_NOTARS_MAX)
+		return;
+
+	if (notar_pending_exists(new_notar))
 		return;
 
 	idx = __pending_notars_base + __pending_notars_count;
-	if (idx >= 100)
-		idx -= 100;
+	if (idx >= PENDING_NOTARS_MAX)
+		idx -= PENDING_NOTARS_MAX;
 
 	bcopy(new_notar, __pending_notars[idx], sizeof(public_key_t));
 	__pending_notars_count++;
 
 	public_key_node_name(new_notar, notarname);
 	lprintf("adding pending notar: %s", notarname);
+}
+
+static void
+notar_pending_remove(public_key_t remove_notar)
+{
+	void *n;
+
+	n = __pending_notars + __pending_notars_base;
+	if (pubkey_compare(remove_notar, n) == 0) {
+		notar_pending_next();
+		return;
+	}
+
+	for (size_t i = 0; i < PENDING_NOTARS_MAX; i++)
+		if (pubkey_compare(__pending_notars[i], remove_notar) == 0)
+			bzero(__pending_notars[i], sizeof(public_key_t));
 }
 
 uint8_t *
@@ -442,13 +486,18 @@ notar_pending_next(void)
 	if (__pending_notars_count == 0)
 		return (NULL);
 
-	res = __pending_notars + __pending_notars_base;
-	__pending_notars_count--;
-	__pending_notars_base++;
-	if (__pending_notars_base == __pending_notars_size)
-		__pending_notars_base = 0;
+	for (; __pending_notars_count;) {
+		res = __pending_notars + __pending_notars_base;
+		__pending_notars_count--;
+		__pending_notars_base++;
+		if (__pending_notars_base == __pending_notars_size)
+			__pending_notars_base = 0;
 
-	return (res);
+		if (pubkey_compare(res, (void *)pubkey_zero) != 0)
+			return (res);
+	}
+
+	return (NULL);
 }
 
 void

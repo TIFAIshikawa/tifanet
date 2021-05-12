@@ -276,10 +276,12 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 		len = sizeof(struct sockaddr_storage);
 		if (getpeername(info->ident, (struct sockaddr *)&tmp,
 			&len) == -1) {
-			if (errno != ENOTCONN)
+			if (errno != ENOTCONN) {
 				read(info->ident, &c, 1);
-			lprintf("message_event_on_close: connect %s: %s",
-				peername(&nev->remote_addr), strerror(errno));
+				lprintf("message_event_on_close: connect %s: "
+					"%s", peername(&nev->remote_addr),
+					strerror(errno));
+			}
 			peerlist_remove(&nev->remote_addr);
 		}
 	}
