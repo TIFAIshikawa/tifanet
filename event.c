@@ -142,7 +142,6 @@ timer_set(uint64_t msec_delay, event_callback_t callback, void *payload)
 	res->flags = EVENT_TIMER;
 
 #ifdef __linux__
-	int first = FALSE;
 	struct itimerspec ts;
 	struct epoll_event event;
 

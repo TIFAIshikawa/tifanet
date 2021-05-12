@@ -102,7 +102,12 @@ config_path(const char *filename)
 char *
 config_path_r(char *buffer, const char *filename)
 {
- 	snprintf(buffer, MAXPATHLEN + 1, "%s/%s", __config_dir, filename);
+	size_t s;
+
+ 	s = snprintf(buffer, MAXPATHLEN + 1, "%s/%s", __config_dir, filename);
+	if (s >= MAXPATHLEN)
+		FAILTEMP("config_path: path overflow: config_dir=%s "
+			"filename=%s", __config_dir, filename);
 
 	return (buffer);
 }

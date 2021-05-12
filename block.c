@@ -159,7 +159,7 @@ block_last_load()
 }
 
 static block_t *
-block_alloc()
+block_alloc(void)
 {
 	block_t *res;
 

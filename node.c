@@ -80,7 +80,7 @@ public_key_node_name(public_key_t public_key, node_name_t name)
 }
 
 static void
-generate_node_name()
+generate_node_name(void)
 {
 	char ident[KEYPAIR_NAME_LENGTH + 1];
 	char prepend_chksum[strlen(TIFA_NODE_IDENT) + 1];

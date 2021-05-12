@@ -103,7 +103,7 @@ address_name_generate(address_t *address)
 }
 
 static address_t *
-address_alloc()
+address_alloc(void)
 {
 	address_t *res;
 
