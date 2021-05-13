@@ -83,17 +83,6 @@ notar_next(void)
 	return (&__notars[__next_notar_idx]);
 }
 
-static int
-notars_compare(const void *v1, const void *v2)
-{
-	public_key_t *p1, *p2;
-
-	p1 = (public_key_t *)v1;
-	p2 = (public_key_t *)v2;
-
-	return -(pubkey_compare(p1, p2));
-}
-
 public_key_t *
 notars(big_idx_t *num_notars)
 {
@@ -166,51 +155,41 @@ static void
 notar_add(public_key_t new_notar)
 {
 	node_name_t node_name;
-
-	big_idx_t i;
-	int64_t first_empty = -1;
+	big_idx_t ia = 0;
+	int cr;
 
 	if (pubkey_compare(node_public_key(), new_notar) == 0)
 		__is_notar = TRUE;
 
-	for (i = 0; i < __notars_size; i++) {
-		if (pubkey_compare(__notars[i], new_notar) == 0) {
+	for (big_idx_t i = 0; i < __notars_count; i++) {
+		cr = pubkey_compare(__notars[i], new_notar);
+		if (cr > 0) {
+			ia = i;
+}
+		else if (cr == 0) {
 			lprintf("notar_add: attempted to add existing notar %s",
 				public_key_node_name(new_notar, node_name));
 			return;
 		}
-
-		if (pubkey_compare(__notars[i], (void *)pubkey_zero) == 0 &&
-			first_empty == -1)
-			first_empty = i;
 	}
 
 	notar_pending_remove(new_notar);
 
 #ifdef DEBUG_NOTAR
 	public_key_node_name(new_notar, node_name);
-	lprintf("notar_add: adding %s", node_name);
+	lprintf("notar_add: adding %s count=%d ia=%d", node_name, __notars_count, ia);
 #endif
-	if (first_empty != -1) {
-		bcopy(new_notar, __notars[first_empty], sizeof(public_key_t));
-		__notars_count++;
-
-		qsort(__notars, __notars_size, sizeof(public_key_t),
-			notars_compare);
-
-		return;
+	if (__notars_size == __notars_count) {
+		__notars = realloc(__notars, sizeof(public_key_t) *
+				(__notars_size + 100));
+		bzero(__notars + __notars_size, sizeof(public_key_t) * 100);
+		__notars_size += 100;
 	}
 
-	__notars = realloc(__notars, sizeof(public_key_t) *
-			(__notars_size + 100));
-	bzero((void *)__notars + sizeof(public_key_t) *
-			__notars_size, sizeof(public_key_t) * 100);
-	__notars_size += 100;
-
-	bcopy(new_notar, __notars[i], sizeof(public_key_t));
+	for (big_idx_t i = ia; i <= __notars_count; i++)
+		bcopy(__notars[i], __notars[i + 1], sizeof(public_key_t));
+	bcopy(new_notar, __notars[ia], sizeof(public_key_t));
 	__notars_count++;
-
-	qsort(__notars, __notars_size, sizeof(public_key_t), notars_compare);
 }
 
 static void
@@ -219,32 +198,25 @@ notar_remove(public_key_t remove_notar)
 #ifdef DEBUG_NOTAR
 	node_name_t node_name;
 #endif
-	raw_block_t *b;
 	big_idx_t i;
-	size_t sz;
+
+	for (i = 0; i < __notars_count; i++)
+		if (pubkey_compare(__notars[i], remove_notar) == 0)
+			break;
+
+	if (i == __notars_count)
+		return;
 
 	if (pubkey_compare(node_public_key(), remove_notar) == 0)
 		__is_notar = FALSE;
 
-	for (i = 0; i < __notars_size; i++) {
-		if (pubkey_compare(__notars[i], remove_notar) == 0) {
 #ifdef DEBUG_NOTAR
-			public_key_node_name(new_notar, node_name);
-			lprintf("notar_remove: removing %s", node_name);
+	public_key_node_name(new_notar, node_name);
+	lprintf("notar_remove: removing %s", node_name);
 #endif
-			bzero(__notars[i], sizeof(public_key_t));
-			qsort(__notars, __notars_size, sizeof(public_key_t),
-				notars_compare);
-			__notars_size--;
-
-			if (!__notars_size) {
-				b = block_load(0, &sz);
-				notar_add(b->notar);
-			}
-
-			return;
-		}
-	}
+	for (; i < __notars_count - 1; i++)
+		bcopy(__notars[i + 1], __notars[i], sizeof(public_key_t));
+	bzero(__notars[i], sizeof(public_key_t));
 }
 
 static void
