@@ -322,7 +322,7 @@ message_header_validate(event_info_t *info)
 	nev = info->payload;
 	msg = &nev->message_header;
 
-	if (bcmp(msg->magic, TIFA_IDENT, sizeof(magic_t)) != 0) {
+	if (memcmp(msg->magic, TIFA_IDENT, sizeof(magic_t)) != 0) {
 		lprintf("message_read: invalid magic");
 		return (FALSE);
 	}
@@ -665,14 +665,14 @@ is_local_interface_address(struct sockaddr_storage *addr)
 			a4 = (struct sockaddr_in *)addr;
 			ifa4 = (struct sockaddr_in *)ifa->ifa_addr;
 			slen = sizeof(struct in_addr);
-			if (bcmp(&ifa4->sin_addr, &a4->sin_addr, slen) == 0)
+			if (memcmp(&ifa4->sin_addr, &a4->sin_addr, slen) == 0)
 				return (TRUE);
 			break;
 		case AF_INET6:
 			a6 = (struct sockaddr_in6 *)addr;
 			ifa6 = (struct sockaddr_in6 *)ifa->ifa_addr;
 			slen = sizeof(struct in6_addr);
-			if (bcmp(&ifa6->sin6_addr, &a6->sin6_addr, slen) == 0)
+			if (memcmp(&ifa6->sin6_addr, &a6->sin6_addr, slen) == 0)
 				return (TRUE);
 			break;
 		default:

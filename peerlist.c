@@ -271,7 +271,7 @@ peerlist_add_ipv4(struct in_addr addr)
 
 	slen = sizeof(struct in_addr);
 	for (size_t i = 0; i < peerlist.list4_size; i++)
-		if (bcmp(&peerlist.list4[i], &addr, slen) == 0)
+		if (memcmp(&peerlist.list4[i], &addr, slen) == 0)
 			return;
 
 	if (peerlist.list4_size % 100 == 0)
@@ -315,7 +315,7 @@ peerlist_add_ipv6(struct in6_addr addr)
 
 	slen = sizeof(struct in6_addr);
 	for (size_t i = 0; i < peerlist.list6_size; i++)
-		if (bcmp(&peerlist.list6[i], &addr, slen) == 0)
+		if (memcmp(&peerlist.list6[i], &addr, slen) == 0)
 			return;
 
 	if (peerlist.list6_size % 100 == 0)
@@ -363,7 +363,7 @@ peerlist_remove_ipv4(struct in_addr addr)
 
 	slen = sizeof(struct in_addr);
 	for (i = 0; i < peerlist.list4_size; i++)
-		if (bcmp(&peerlist.list4[i], &addr, slen) == 0)
+		if (memcmp(&peerlist.list4[i], &addr, slen) == 0)
 			break;
 
 	if (i == peerlist.list4_size)
@@ -387,7 +387,7 @@ peerlist_remove_ipv6(struct in6_addr addr)
 
 	slen = sizeof(struct in6_addr);
 	for (i = 0; i < peerlist.list6_size; i++)
-		if (bcmp(&peerlist.list6[i], &addr, slen) == 0)
+		if (memcmp(&peerlist.list6[i], &addr, slen) == 0)
 			break;
 
 	if (i == peerlist.list6_size)

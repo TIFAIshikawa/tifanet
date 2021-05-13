@@ -163,9 +163,8 @@ notar_add(public_key_t new_notar)
 
 	for (big_idx_t i = 0; i < __notars_count; i++) {
 		cr = pubkey_compare(__notars[i], new_notar);
-		if (cr > 0) {
+		if (cr < 0)
 			ia = i;
-}
 		else if (cr == 0) {
 			lprintf("notar_add: attempted to add existing notar %s",
 				public_key_node_name(new_notar, node_name));
@@ -177,7 +176,7 @@ notar_add(public_key_t new_notar)
 
 #ifdef DEBUG_NOTAR
 	public_key_node_name(new_notar, node_name);
-	lprintf("notar_add: adding %s count=%d ia=%d", node_name, __notars_count, ia);
+	lprintf("notar_add: adding %s", node_name);
 #endif
 	if (__notars_size == __notars_count) {
 		__notars = realloc(__notars, sizeof(public_key_t) *
@@ -211,7 +210,7 @@ notar_remove(public_key_t remove_notar)
 		__is_notar = FALSE;
 
 #ifdef DEBUG_NOTAR
-	public_key_node_name(new_notar, node_name);
+	public_key_node_name(remove_notar, node_name);
 	lprintf("notar_remove: removing %s", node_name);
 #endif
 	for (; i < __notars_count - 1; i++)
@@ -261,6 +260,12 @@ notar_elect_next(void)
 
 	lprintf("next block %ju->%s (%d)", block_idx_last() + 1,
 		public_key_node_name(__notars[__next_notar_idx], name), idx);
+
+#ifdef DEBUG_NOTAR
+	for (big_idx_t i = 0; i < __notars_count; i++)
+		lprintf("%ld: %s", i, public_key_node_name(__notars[i], name));
+	lprintf("-----");
+#endif
 
 	bcopy(__notars_prev[0], __notars_prev[1], sizeof(public_key_t));
 	bcopy(__notars[__next_notar_idx], __notars_prev[0],

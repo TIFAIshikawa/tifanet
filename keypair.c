@@ -212,13 +212,13 @@ keypair_verify_finalize(void *context, void *public_key, void *signature)
 int
 pubkey_compare(void *l, void *r)
 {
-	return (bcmp(l, r, sizeof(public_key_t)));
+	return (memcmp(l, r, sizeof(public_key_t)));
 }
 
 int
 hash_compare(hash_t l, hash_t r)
 {
-	return (bcmp(l, r, sizeof(hash_t)));
+	return (memcmp(l, r, sizeof(hash_t)));
 }
 
 char *
