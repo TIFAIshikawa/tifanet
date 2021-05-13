@@ -92,7 +92,6 @@ int
 main(int argc, char *argv[])
 {
 	int should_fork = 1;
-	int skip_update = 0;
 	int ch, pid, fd;
 
 	while ((ch = getopt(argc, argv, "fhnsSc")) != -1) {
@@ -105,11 +104,6 @@ main(int argc, char *argv[])
 			break;
 		case 's':
 			config_set_sync_only(TRUE);
-			break;
-		case 'S':
-			// undocumented: only use when network sync is
-			// not wanted, which is almost never the case
-			skip_update = 1;
 			break;
 		case 'c':
 			config_set_caches_only(TRUE);
@@ -203,11 +197,7 @@ main(int argc, char *argv[])
 	if (config_is_caches_only()) {
 		cache_download();
 	} else {
-		if (skip_update) {
-			daemon_start();
-		} else {
-			blockchain_update();
-		}
+		daemon_start();
 	}
 
 	event_loop_start();
