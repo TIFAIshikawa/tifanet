@@ -88,7 +88,7 @@ caches_get_blocks(event_info_t *info, event_flags_t eventflags)
 	cache_hash(hash);
 	rb = raw_block_last(&size);
 
-	if (hash_compare(hash, rb->cache_hash) != 0) {
+	if (!hash_equals(hash, rb->cache_hash)) {
 		lprintf("local cache hash doesn't equal block cache_hash "
 			"@ idx %ju (rxcache idx %ju notarscache idx %ju)",
 			block_idx_last(), rxcache_last_block_idx(),
@@ -128,9 +128,15 @@ cache_download(void)
 		caches_only_download_callback);
 }
 
-void
+int
 cache_remove(void)
 {
-	config_unlink("blocks/rxcache.bin");
-	config_unlink("blocks/notarscache.bin");
+	int r[4];
+
+	r[0] = config_unlink("blocks/rxcache.bin");
+	r[1] = config_unlink("blocks/notarscache.bin");
+	r[2] = config_unlink("peerlist4.txt");
+	r[3] = config_unlink("peerlist6.txt");
+
+	return (r[0] && r[1] && r[2] && r[3]);
 }

@@ -46,6 +46,7 @@ typedef uint8_t small_hash_t[16];
 typedef uint8_t hash_t[32];
 
 extern const public_key_t pubkey_zero;
+extern const signature_t signature_zero;
 
 extern keypair_t *keypair_create(void);
 extern keypair_t *keypair_load(const char *filename);
@@ -67,10 +68,17 @@ extern void keypair_verify_update(void *context, void *payload, size_t size);
 extern int keypair_verify_finalize(void *context, void *public_key, void *signature);
 
 extern int pubkey_compare(void *l, void *r);
-extern int hash_compare(hash_t l, hash_t r);
+extern int pubkey_equals(void *l, void *r);
+extern int hash_compare(void *l, void *r);
+extern int hash_equals(void *l, void *r);
+extern int signature_compare(void *l, void *r);
+extern int signature_equals(void *l, void *r);
 
-extern char *small_hash_str(small_hash_t h, char *tmp);
-extern char *hash_str(hash_t h, char *tmp);
-extern char *signature_str(signature_t s, char *tmp);
+extern char *small_hash_str(small_hash_t h);
+extern char *small_hash_str_r(small_hash_t h, char *tmp);
+extern char *hash_str(hash_t h);
+extern char *hash_str_r(hash_t h, char *tmp);
+extern char *signature_str(signature_t s);
+extern char *signature_str_r(signature_t s, char *tmp);
 
 #endif /* __TIFA_KEYPAIR_H */

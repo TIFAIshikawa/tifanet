@@ -38,13 +38,25 @@
 #include "log.h"
 
 static FILE *__logfile = NULL;
-uint8_t loglevel = 1;
+static uint8_t __loglevel = 1;
 
 void
-openlog()
+log_setlevel(uint8_t newloglevel)
+{
+	__loglevel = newloglevel;
+}
+
+void
+log_open()
 {
 	if (!__logfile)
 		__logfile = config_fopen("tifanetd.log", "a+");
+}
+
+FILE *
+log_file(void)
+{
+	return (__logfile ? __logfile : stderr);
 }
 
 void
@@ -56,10 +68,10 @@ lprintf(const char *fmt, ...)
 	struct timeval tv;
 	char tmbuf[30];
 
-	if (!loglevel)
+	if (!__loglevel)
 		return;
 
-	l = __logfile ? __logfile : stderr;
+	l = log_file();
 
 	gettimeofday(&tv, NULL);
 	info = localtime(&tv.tv_sec);
@@ -74,4 +86,10 @@ lprintf(const char *fmt, ...)
 
 	fprintf(l, "\n");
 	fflush(l);
+}
+
+int
+log_remove(void)
+{
+	return (config_unlink("tifanetd.log"));
 }

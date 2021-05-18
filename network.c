@@ -344,8 +344,9 @@ message_header_validate(event_info_t *info)
 	}
 #ifdef DEBUG_NETWORK
 	if (nev->type == NETWORK_EVENT_TYPE_SERVER)
-		lprintf("received message %s from %s",
-			opcode_names[msg->opcode], peername(&nev->remote_addr));
+		lprintf("msg(%s %lld %ld) <- %s",
+			opcode_names[msg->opcode], be64toh(msg->userinfo),
+			size, peername(&nev->remote_addr));
 #endif
 
 	return (TRUE);
@@ -574,7 +575,8 @@ message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 
 	if ((res = request_send(addr, &msg, payload))) {
 #ifdef DEBUG_NETWORK
-		lprintf("sending message %s to %s", opcode_names[opcode],
+		lprintf("msg(%s %lld %ld) -> %s",
+			opcode_names[opcode], be64toh(info), size,
 			peername(addr));
 #endif
 		return (res);

@@ -125,7 +125,12 @@ config_unlink(const char *filename)
 {
 	char tmp[MAXPATHLEN + 1];
 
-	return (unlink(config_path_r(tmp, filename)));
+	config_path_r(tmp, filename);
+
+	if (access(tmp, F_OK) != 0)
+		return (1);
+
+	return (unlink(tmp) == 0);
 }
 
 void

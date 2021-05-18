@@ -46,6 +46,7 @@ struct __keypair {
 };
 
 const public_key_t pubkey_zero = { 0 };
+const signature_t signature_zero = { 0 };
 
 keypair_t *
 keypair_create()
@@ -216,13 +217,45 @@ pubkey_compare(void *l, void *r)
 }
 
 int
-hash_compare(hash_t l, hash_t r)
+pubkey_equals(void *l, void *r)
+{
+	return (pubkey_compare(l, r) == 0);
+}
+
+int
+hash_compare(void *l, void *r)
 {
 	return (memcmp(l, r, sizeof(hash_t)));
 }
 
+int
+hash_equals(void *l, void *r)
+{
+	return (hash_compare(l, r) == 0);
+}
+
+int
+signature_compare(void *l, void *r)
+{
+	return (memcmp(l, r, sizeof(signature_t)));
+}
+
+int
+signature_equals(void *l, void *r)
+{
+	return (signature_compare(l, r) == 0);
+}
+
 char *
-small_hash_str(small_hash_t h, char *tmp)
+small_hash_str(small_hash_t h)
+{
+	static char tmp[SMALL_HASH_STR_LENGTH];
+
+	return (small_hash_str_r(h, tmp));
+}
+
+char *
+small_hash_str_r(small_hash_t h, char *tmp)
 {
 	uint8_t *p;
 
@@ -238,7 +271,15 @@ small_hash_str(small_hash_t h, char *tmp)
 }
 
 char *
-hash_str(hash_t h, char *tmp)
+hash_str(hash_t h)
+{
+	static char tmp[HASH_STR_LENGTH];
+
+	return (hash_str_r(h, tmp));
+}
+
+char *
+hash_str_r(hash_t h, char *tmp)
 {
 	uint8_t *p;
 
@@ -257,7 +298,14 @@ hash_str(hash_t h, char *tmp)
 	return (tmp);
 }
 
-char *signature_str(signature_t s, char *tmp)
+char *signature_str(signature_t s)
+{
+	static char tmp[SIGNATURE_STR_LENGTH];
+
+	return (signature_str_r(s, tmp));
+}
+
+char *signature_str_r(signature_t s, char *tmp)
 {
 	uint8_t *p;
 

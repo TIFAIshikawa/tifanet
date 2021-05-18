@@ -120,6 +120,7 @@ extern raw_pact_t *raw_block_pacts(raw_block_t *block);
 extern raw_pact_t *pact_for_rx_idx(raw_block_t *block, small_idx_t rx_idx);
 
 extern void raw_block_print(raw_block_t *raw_block);
+extern void raw_block_fprint(FILE *f, raw_block_t *raw_block);
 
 extern void blockchain_load(void);
 extern void blockchain_update(void);
@@ -129,7 +130,7 @@ extern int blockchain_is_updating(void);
 extern void getblock(big_idx_t index);
 extern void getblocks(big_idx_t target_idx);
 
-extern void blocks_remove(void);
+extern int blocks_remove(void);
 
 extern int raw_block_validate(raw_block_t *raw_block, size_t blocksize); 
 

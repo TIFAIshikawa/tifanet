@@ -52,6 +52,9 @@ wallet_add(wallet_t *wallet)
 {
 	size_t wlen;
 
+	__wallets[__num_wallets] = wallet;
+	__num_wallets++;
+
 	wlen = sizeof(wallet_t *);
 	if (__num_wallets % 10 == 0) {
 #ifdef DEBUG_ALLOC
@@ -60,8 +63,6 @@ wallet_add(wallet_t *wallet)
 		__wallets = realloc(__wallets, (__num_wallets + 10) * wlen);
 		bzero(__wallets + __num_wallets, 10 * wlen);
 	}
-	__wallets[__num_wallets] = wallet;
-	__num_wallets++;
 }
 
 wallet_t **
@@ -69,6 +70,9 @@ wallets_load()
 {
 	DIR *dir;
 	struct dirent *ent;
+
+	if (__wallets)
+		return (__wallets);
 
 	__wallets = calloc(10, sizeof(wallet_t *));
 #ifdef DEBUG_ALLOC
@@ -244,6 +248,12 @@ wallet_address_add(wallet_t *wallet, address_t *address)
 		if (wallet->addresses[i] == address)
 			return;
 
+	wallet->addresses[wallet->num_addresses] = address;
+	wallet->num_addresses++;
+
+	address_path(wallet->name, address_name(address), tmp);
+	address_save(address, tmp);
+
 	if (wallet->num_addresses % 10 == 0) {
 #ifdef DEBUG_ALLOC
 	lprintf("*ADDRESSES %p", wallet->addresses);
@@ -251,11 +261,6 @@ wallet_address_add(wallet_t *wallet, address_t *address)
 		wallet->addresses = realloc(wallet->addresses,
 			sizeof(address_t *) * wallet->num_addresses + 10);
 	}
-	wallet->addresses[wallet->num_addresses] = address;
-	wallet->num_addresses++;
-
-	address_path(wallet->name, address_name(address), tmp);
-	address_save(address, tmp);
 }
 
 amount_t
@@ -310,7 +315,7 @@ address_find_by_public_key(public_key_t public_key)
 		for (size_t ai = 0; ai < w->num_addresses; ai++) {
 			addr = w->addresses[ai];
 			pk = address_public_key(addr);
-			if (pubkey_compare(public_key, pk) == 0)
+			if (pubkey_equals(public_key, pk))
 				return (addr);
 		}
 	}

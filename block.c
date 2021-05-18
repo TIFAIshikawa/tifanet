@@ -77,9 +77,11 @@ static event_info_t *__block_poll_timer = NULL;
 void raw_block_broadcast(big_idx_t index);
 void add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt);
 static int raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize);
-static int raw_block_timeout_process_block(raw_block_timeout_t *rt,
-	size_t blocksize);
-static void raw_block_timeout_process(raw_block_t *raw_block, size_t blocksize);
+static int raw_block_timeout_process_block(raw_block_timeout_t *rt);
+static void raw_block_timeout_process(raw_block_t *raw_block);
+static void raw_block_timeout_free(void);
+static void raw_block_fprint_base(FILE *f, raw_block_t *raw_block);
+static void raw_block_timeout_fprint(FILE *f, raw_block_timeout_t *raw_block);
 
 big_idx_t
 block_idx_last()
@@ -406,8 +408,11 @@ raw_block_size(raw_block_t *raw_block, size_t limit)
 	size_t res;
 	raw_pact_t *t;
 
+	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
+		return (sizeof(raw_block_timeout_t));
+
 	res = sizeof(raw_block_t);
-	if (be64toh(raw_block->flags) & BLOCK_FLAG_NEW_NOTAR)
+	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR)
 		res += sizeof(public_key_t);
 	t = raw_block_pacts(raw_block);
 	for (small_idx_t i = 0; i < num_pacts(raw_block); i++) {
@@ -421,14 +426,53 @@ raw_block_size(raw_block_t *raw_block, size_t limit)
 	return (res);
 }
 
+static size_t
+block_denounce_timeout_fill(raw_block_timeout_t *rt)
+{
+	size_t signsize;
+	size_t res = 0;
+	void *self;
+	void *prev;
+
+	self = node_public_key();
+	signsize = offsetof(raw_block_timeout_t, notar);
+
+	for (big_idx_t i = 0; i < 2; i++) {
+		prev = notar_denounce_node(i);
+		bcopy(prev, rt->notar[i], sizeof(public_key_t));
+
+		if (!pubkey_equals(self, prev))
+			continue;
+
+lprintf("will denounce for slot %d", i);
+		raw_block_sign((raw_block_t *)rt, signsize, rt->signature[i]);
+		res++;
+	}
+raw_block_timeout_fprint(log_file(), rt);
+
+lprintf("block_denounce_timeout_fill: returns %d", res);
+	return (res);
+}
+
+static void
+block_denounce_timeout_init(raw_block_timeout_t *rt)
+{
+	size_t sz, size;
+
+	size = sizeof(raw_block_timeout_t);
+
+	rt->index = htobe64(block_idx_last() + 1);
+	rt->time = htobe64(block_time(raw_block_last(&sz)) + 19);
+	rt->flags = htobe64(BLOCK_FLAG_TIMEOUT);
+	raw_block_hash((raw_block_t *)rt, size, rt->prev_block_hash);
+	bcopy(notar_next(), rt->denounced_notar, sizeof(public_key_t));
+}
+
 static void
 block_denounce_timeout_create(void)
 {
-	size_t sz, size, signsize;
-	raw_block_timeout_t rbt;
-	public_key_t *self;
 	raw_block_t *rb;
-	int filled = 0;
+	size_t size;
 
 	if (!node_is_notar())
 		return;
@@ -436,35 +480,23 @@ block_denounce_timeout_create(void)
 	if (block_idx_last() < 2)
 		return;
 
-	rb = (raw_block_t *)&rbt;
 	size = sizeof(raw_block_timeout_t);
 
-	if (__raw_block_timeout_tmp)
-		bcopy(__raw_block_timeout_tmp, &rbt, size);
-	else
-		bzero(&rbt, sizeof(raw_block_timeout_t));
-	self = node_public_key();
-
-	if (!rbt.index) {
-		rbt.index = htobe64(block_idx_last() + 1);
-		rbt.time = block_time(raw_block_last(&sz)) + 18;
-		rbt.flags = htobe64(BLOCK_FLAG_TIMEOUT);
-		raw_block_hash(rb, size, rbt.prev_block_hash);
-		bcopy(notar_next(), rbt.denounced_notar, sizeof(public_key_t));
+	if (!__raw_block_timeout_tmp) {
+		__raw_block_timeout_tmp = calloc(1, size);
+//#ifdef DEBUG_ALLOC
+		lprintf("+RAW_BLOCK_TIMEOUT_TMP %p", __raw_block_timeout_tmp);
+//#endif
+		block_denounce_timeout_init(__raw_block_timeout_tmp);
 	}
-	signsize = offsetof(raw_block_timeout_t, notar);
-	for (int i = 0; i < 2; i++) {
-		if (pubkey_compare(self, notar_prev(i)) != 0)
-			continue;
+	rb = (raw_block_t *)__raw_block_timeout_tmp;
 
-		bcopy(self, rbt.notar[i], sizeof(public_key_t));
-		raw_block_sign(rb, signsize, rbt.signature[i]);
-		filled++;
-	}
+	if (!__raw_block_timeout_tmp->index)
+		block_denounce_timeout_init(__raw_block_timeout_tmp);
 
-	if (filled)
+	if (block_denounce_timeout_fill(__raw_block_timeout_tmp))
 		if (raw_block_timeout_validate(rb, size))
-			raw_block_timeout_process(rb, size);
+			raw_block_timeout_process(rb);
 }
 
 static int
@@ -473,6 +505,8 @@ raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize)
 	raw_block_timeout_t *rb;
 	time_t ct, bt, lbt;
 	size_t size;
+	void *self;
+	void *prev;
 	void *crx;
 
 	if (blocksize != sizeof(raw_block_timeout_t))
@@ -494,28 +528,30 @@ raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize)
 		return (FALSE);
 	}
 
-	if (pubkey_compare((void *)pubkey_zero, rb->notar[0]) == 0 &&
-		pubkey_compare((void *)pubkey_zero, rb->notar[1]) == 0) {
+	if (pubkey_equals(pubkey_zero, rb->notar[0]) &&
+		pubkey_equals(pubkey_zero, rb->notar[1])) {
 		lprintf("denounce timeout block with index %ju has no notars",
 			block_idx(raw_block));
 		return (FALSE);
 	}
 
-	if (pubkey_compare(notar_next(), rb->denounced_notar) != 0) {
+	if (!pubkey_equals(notar_next(), rb->denounced_notar)) {
 		lprintf("illegal denounced notar for denounce timeout block "
 			"index %ju", block_idx(raw_block));
 		return (FALSE);
 	}
 
 	size = offsetof(raw_block_timeout_t, notar);
-	for (int i = 0; i < 2; i++) {
-		if (pubkey_compare((void *)pubkey_zero, rb->notar[i]) != 0) {
-			if (pubkey_compare(rb->notar[i], notar_prev(i)) != 0) {
-				lprintf("denounce timeout block with index %ju "
-					"has invalid notar %d", i,
-					block_idx(raw_block));
-				return (FALSE);
-			}
+	self = node_public_key();
+	for (big_idx_t i = 0; i < 2; i++) {
+		prev = notar_denounce_node(i);
+		if (!pubkey_equals(rb->notar[i], prev)) {
+			lprintf("denounce timeout block with index %ju "
+				"has invalid notar %d", i,
+				block_idx(raw_block));
+			return (FALSE);
+		}
+		if (!signature_equals(signature_zero, rb->signature[i])) {
 			crx = keypair_verify_start(rb, size);
 			if (!keypair_verify_finalize(crx, rb->notar[i],
 					rb->signature[i])) {
@@ -601,14 +637,14 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 
 		// check prev block hash
 		raw_block_hash(__raw_block_last, __raw_block_last_size, pbh);
-		if (hash_compare(pbh, raw_block->prev_block_hash) != 0) {
+		if (!hash_equals(pbh, raw_block->prev_block_hash)) {
 			lprintf("gotten block with illegal prev_block_hash, "
 				"index %ju", block_idx(raw_block));
 			return (FALSE);
 		}
 
 		// check notar
-		if (pubkey_compare(notar_next(), raw_block->notar) != 0) {
+		if (!pubkey_equals(notar_next(), raw_block->notar)) {
 			lprintf("illegal notar for block index %ju",
 				block_idx(raw_block));
 			return (FALSE);
@@ -627,7 +663,7 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	bcopy(sig, raw_block->signature, sizeof(signature_t));
 
 	if ((new_notar = raw_block_new_notar(raw_block))) {
-		if (pubkey_compare(new_notar, (void *)pubkey_zero) == 0) {
+		if (pubkey_equals(new_notar, pubkey_zero)) {
 			lprintf("block tried adding invalid notar %s, index "
 				"%ju", public_key_node_name(new_notar, nn),
 				block_idx(raw_block));
@@ -696,21 +732,30 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	return (TRUE);
 }
 
+static void
+raw_block_timeout_free(void)
+{
+	if (__raw_block_timeout_tmp) {
+//#ifdef DEBUG_ALLOC
+		lprintf("-RAW_BLOCK_TIMEOUT_TMP %p", __raw_block_timeout_tmp);
+//#endif
+		free(__raw_block_timeout_tmp);
+		__raw_block_timeout_tmp = NULL;
+	}
+}
+
 static int
-raw_block_timeout_process_block(raw_block_timeout_t *rt, size_t blocksize)
+raw_block_timeout_process_block(raw_block_timeout_t *rt)
 {
 	raw_block_t *rb;
 
 	rb = (raw_block_t *)rt;
 
-	if (pubkey_compare((void *)pubkey_zero, rt->notar[0]) != 0 &&
-		pubkey_compare((void *)pubkey_zero, rt->notar[1]) != 0) {
+	if (!signature_equals(signature_zero, rt->signature[0]) &&
+		!signature_equals(signature_zero, rt->signature[1])) {
 		notar_raw_block_add(rb);
-		raw_block_write(rb, blocksize);
-		if (__raw_block_timeout_tmp) {
-			free(__raw_block_timeout_tmp);
-			__raw_block_timeout_tmp = NULL;
-		}
+		raw_block_write(rb, sizeof(raw_block_timeout_t));
+		raw_block_timeout_free();
 
 		raw_block_broadcast(block_idx(rb));
 
@@ -721,33 +766,48 @@ raw_block_timeout_process_block(raw_block_timeout_t *rt, size_t blocksize)
 }
 
 static void
-raw_block_timeout_process(raw_block_t *raw_block, size_t blocksize)
+block_denounce_timeout_merge(raw_block_timeout_t *dst, raw_block_timeout_t *src)
+{
+	for (int i = 0; i < 2; i++)
+		if (signature_equals(dst->signature[i], signature_zero) &&
+			signature_equals(src->signature[i], signature_zero))
+				bcopy(src->signature[i], dst->signature[i],
+					sizeof(signature_t));
+}
+
+static void
+raw_block_timeout_process(raw_block_t *raw_block)
 {
 	raw_block_timeout_t *rb;
 	raw_block_timeout_t *rt;
+	size_t blocksize;
+	size_t size;
 
+	blocksize = sizeof(raw_block_timeout_t);
 	rb = (raw_block_timeout_t *)raw_block;
+raw_block_timeout_fprint(log_file(), rb);
 
-	if (raw_block_timeout_process_block(rb, blocksize))
+	if (raw_block_timeout_process_block(rb))
 		return;
 
 	if (!__raw_block_timeout_tmp) {
 		__raw_block_timeout_tmp = malloc(blocksize);
+//#ifdef DEBUG_ALLOC
+		lprintf("+RAW_BLOCK_TIMEOUT_TMP %p", __raw_block_timeout_tmp);
+//#endif
 		bcopy(raw_block, __raw_block_timeout_tmp, blocksize);
 		return;
+	} else {
+		block_denounce_timeout_merge(__raw_block_timeout_tmp, rb);
 	}
 
 	rt = __raw_block_timeout_tmp;
-	for (int i = 0; i < 2; i++) {
-		if (pubkey_compare((void *)pubkey_zero, rb->notar[i]) == 0 &&
-			pubkey_compare((void *)pubkey_zero, rt->notar[i]) != 0){
-			bcopy(rt->notar[i], rb->notar[i], sizeof(public_key_t));
-			bcopy(rt->signature[i], rb->signature[i],
-				sizeof(signature_t));
-		}
-	}
+	size = sizeof(raw_block_timeout_t);
+	if (block_denounce_timeout_fill(rt))
+		message_broadcast(OP_BLOCKANNOUNCE, __raw_block_timeout_tmp,
+			size, rt->index);
 
-	raw_block_timeout_process_block(rt, blocksize);
+	raw_block_timeout_process_block(rt);
 }
 
 void
@@ -757,10 +817,10 @@ raw_block_process(raw_block_t *raw_block, size_t blocksize)
 	size_t size;
 
 	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
-		return (raw_block_timeout_process(raw_block, blocksize));
+		return (raw_block_timeout_process(raw_block));
 
 	// if this node created last this block, caches_*_add is done elsewhere
-	if (pubkey_compare(node_public_key(), raw_block->notar) != 0) {
+	if (!pubkey_equals(node_public_key(), raw_block->notar)) {
 		rxcache_raw_block_add(raw_block);
 		notar_raw_block_add(raw_block);
 	}
@@ -773,6 +833,8 @@ raw_block_process(raw_block_t *raw_block, size_t blocksize)
 	}
 
 	raw_block_write(raw_block, blocksize);
+
+	raw_block_timeout_free();
 
 	notar_elect_next();
 }
@@ -973,29 +1035,54 @@ raw_block_pacts(raw_block_t *raw_block)
 }
 
 static void
-raw_block_timeout_print(raw_block_t *raw_block)
+raw_block_timeout_fprint(FILE *f, raw_block_timeout_t *rb)
 {
-	raw_block_timeout_t *rb;
 	node_name_t node_name;
 
-	rb = (raw_block_timeout_t *)raw_block;
-
-	printf("\n");
+	raw_block_fprint_base(f, (raw_block_t *)rb);
 
 	public_key_node_name(rb->denounced_notar, node_name);
-	printf("  denounced_notar: %s\n", node_name);
-	printf("  notars:\n");
+	fprintf(f, "  denounced_notar: %s\n", node_name);
+	fprintf(f, "  notars:\n");
 	for (int i = 0; i < 2; i++) {
 		public_key_node_name(rb->notar[i], node_name);
-		printf("    - %s\n", node_name);
+		fprintf(f, "    - notar: %s\n", node_name);
+		fprintf(f, "      signature: %s\n",
+			signature_str(rb->signature[i]));
 	}
 }
 
 void
 raw_block_print(raw_block_t *raw_block)
 {
-	char stmp[SIGNATURE_STR_LENGTH];
-	char htmp[HASH_STR_LENGTH];
+	raw_block_fprint(stdout, raw_block);
+}
+
+static void
+raw_block_fprint_base(FILE *f, raw_block_t *raw_block)
+{
+	time_t tm;
+
+	tm = (time_t)block_time(raw_block);
+	fprintf(f, "---\nresult:\n");
+	fprintf(f, "  index: %ju\n", block_idx(raw_block));
+	fprintf(f, "  time: %ju %s", be64toh(raw_block->time), ctime(&tm));
+	fprintf(f, "  flags: %ju", be64toh(raw_block->flags));
+	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR)
+		fprintf(f, " BLOCK_FLAG_NEW_NOTAR");
+	if (block_flags(raw_block) & BLOCK_FLAG_DENOUNCE_NOTAR)
+		fprintf(f, " BLOCK_FLAG_DENOUNCE_NOTAR");
+
+	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT) {
+		fprintf(f, " BLOCK_FLAG_TIMEOUT");
+	}
+
+	fprintf(f, "\n");
+}
+
+void
+raw_block_fprint(FILE *f, raw_block_t *raw_block)
+{
 	small_idx_t tx_num, rx_num;
 	address_name_t addr_name;
 	node_name_t node_name;
@@ -1003,37 +1090,26 @@ raw_block_print(raw_block_t *raw_block)
 	small_hash_t thash;
 	pact_tx_t *tx;
 	pact_rx_t *rx;
-	time_t tm;
 
-	tm = (time_t)block_time(raw_block);
-	printf("---\nresult:\n");
-	printf("  index: %ju\n", block_idx(raw_block));
-	printf("  time: %ju %s", be64toh(raw_block->time), ctime(&tm));
-	printf("  flags: %ju", be64toh(raw_block->flags));
-	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR)
-		printf(" BLOCK_FLAG_NEW_NOTAR");
-	if (block_flags(raw_block) & BLOCK_FLAG_DENOUNCE_NOTAR)
-		printf(" BLOCK_FLAG_DENOUNCE_NOTAR");
+	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
+		return (raw_block_timeout_fprint(f,
+			(raw_block_timeout_t *)raw_block));
 
-	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT) {
-		printf(" BLOCK_FLAG_TIMEOUT");
-		return raw_block_timeout_print(raw_block);
-	}
+	raw_block_fprint_base(f, raw_block);
 
-	printf("\n");
-	printf("  prev_block_hash: %s\n",
-		hash_str(raw_block->prev_block_hash, htmp));
+	fprintf(f, "  prev_block_hash: %s\n",
+		hash_str(raw_block->prev_block_hash));
 	public_key_node_name(raw_block->notar, node_name);
-	printf("  notar: %s\n", node_name);
+	fprintf(f, "  notar: %s\n", node_name);
 	if (be64toh(raw_block->flags) & BLOCK_FLAG_NEW_NOTAR) {
 		public_key_node_name((void *)raw_block + sizeof(raw_block_t),
 			node_name);
-		printf("  new_notar: %s\n", node_name);
+		fprintf(f, "  new_notar: %s\n", node_name);
 	}
-	printf("  signature: %s\n", signature_str(raw_block->signature, stmp));
-	printf("  cache_hash: %s\n", hash_str(raw_block->cache_hash, htmp));
-	printf("  num_pacts: %d\n", num_pacts(raw_block));
-	printf("  pacts:\n");
+	fprintf(f, "  signature: %s\n", signature_str(raw_block->signature));
+	fprintf(f, "  cache_hash: %s\n", hash_str(raw_block->cache_hash));
+	fprintf(f, "  num_pacts: %d\n", num_pacts(raw_block));
+	fprintf(f, "  pacts:\n");
 	t = raw_block_pacts(raw_block);
 	
 	for (small_idx_t i = 0; i < num_pacts(raw_block); i++) {
@@ -1041,24 +1117,24 @@ raw_block_print(raw_block_t *raw_block)
 		tx_num = pact_num_tx(t);
 		rx_num = pact_num_rx(t);
 		tx = (void *)t + sizeof(raw_pact_t);
-		printf("    - pact_hash: %s\n", small_hash_str(thash, htmp));
+		fprintf(f, "    - pact_hash: %s\n", small_hash_str(thash));
 		
-		printf("      tx:%s\n", tx_num ? "" : " []");
+		fprintf(f, "      tx:%s\n", tx_num ? "" : " []");
 		for (small_idx_t ri = 0; ri < tx_num; ri++) {
-			printf("        - block_idx: %ju\n",
+			fprintf(f, "        - block_idx: %ju\n",
 				be64toh(tx->block_idx));
-			printf("          block_rx_idx: %d\n",
+			fprintf(f, "          block_rx_idx: %d\n",
 				be32toh(tx->block_rx_idx));
-			printf("          signature: %s\n",
-				signature_str(tx->signature, stmp));
+			fprintf(f, "          signature: %s\n",
+				signature_str(tx->signature));
 			tx = (void *)tx + sizeof(pact_tx_t);
 		}
 		rx = (void *)tx;
-		printf("      rx:\n");
+		fprintf(f, "      rx:\n");
 		for (small_idx_t ti = 0; ti < rx_num; ti++) {
 			public_key_address_name(rx->address, addr_name);
-			printf("        - address: %s\n", addr_name);
-			printf("          amount: %2.2f\n",
+			fprintf(f, "        - address: %s\n", addr_name);
+			fprintf(f, "          amount: %2.2f\n",
 				stoi(be64toh(rx->amount)));
 			rx = (void *)rx + sizeof(pact_rx_t);
 		}
@@ -1131,8 +1207,10 @@ getblocks(big_idx_t target_idx)
 
 	lprintf("fully synchronized");
 
-	if (config_is_sync_only())
+	if (config_is_sync_only()) {
+		peerlist_save();
 		exit(0);
+	}
 
 	notar_elect_next();
 	if (!config_is_caches_only())
@@ -1140,12 +1218,16 @@ getblocks(big_idx_t target_idx)
 	return;
 }
 
-void
+int
 blocks_remove(void)
 {
-	config_unlink("blocks/blocks0.bin");
-	config_unlink("blocks/blocks0.idx");
-	config_unlink("blocks/lastblock.idx");
+	int r[3];
+
+	r[0] = config_unlink("blocks/blocks0.bin");
+	r[1] = config_unlink("blocks/blocks0.idx");
+	r[2] = config_unlink("blocks/lastblock.idx");
+
+	return (r[0] && r[1] && r[2]);
 }
 
 static void
@@ -1160,9 +1242,10 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 		lprintf("no blocks seen in the last 5 seconds, polling...");
 		blockchain_update();
 	}
-	if (t > block_time(__raw_block_last) + 18)
+	if (t > block_time(__raw_block_last) + 18 && !__getblocks_target_idx) {
+		lprintf("no blocks seen in the last 18 seconds, denouncing...");
 		block_denounce_timeout_create();
-
+	}
 	block_poll_start();
 }
 

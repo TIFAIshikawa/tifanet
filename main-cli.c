@@ -44,6 +44,8 @@
 #include "config.h"
 #include "wallet.h"
 #include "block.h"
+#include "notar.h"
+#include "cache.h"
 #include "node.h"
 #include "lock.h"
 #include "log.h"
@@ -61,7 +63,7 @@ static int opt_blockhash(int argc, char *argv[]);
 static int opt_history(int argc, char *argv[]);
 static int opt_send(int argc, char *argv[]);
 static int opt_node(int argc, char *argv[]);
-static int opt_resetblocks(int argc, char *argv[]);
+static int opt_reset(int argc, char *argv[]);
 
 static int
 usage(int deliberate)
@@ -75,7 +77,8 @@ usage(int deliberate)
 	fprintf(f, "Usage: %s [<command>] [<opts...>]\n\n", cmd);
 	fprintf(f, "  help             show this help\n");
 	fprintf(f, "  node             show some node information\n");
-	fprintf(f, "  resetblocks      remove all blocks data and caches\n");
+	fprintf(f, "  reset            remove logs, blocks and caches "
+		"(does NOT remove wallets)\n");
 	fprintf(f, "  wallets          list wallets and balances\n");
 	fprintf(f, "  wallet\n");
 	fprintf(f, "    -l             only list wallets, not balances\n");
@@ -261,7 +264,6 @@ opt_blockhash(int argc, char *argv[])
 	hash_t hash;
 	big_idx_t idx;
 	raw_block_t *raw_block;
-	char htmp[HASH_STR_LENGTH];
 
 	if (caches_only) {
 		printf("blocks option is not available on thin clients.\n");
@@ -272,7 +274,7 @@ opt_blockhash(int argc, char *argv[])
 	case 0:
 		raw_block = raw_block_last(&sz);
 		raw_block_hash(raw_block, sz, hash);
-		printf("%s\n", hash_str(hash, htmp));
+		printf("%s\n", hash_str(hash));
 		break;
 	case 1:
 		idx = strtoimax(argv[0], NULL, 10);
@@ -282,7 +284,7 @@ opt_blockhash(int argc, char *argv[])
 		}
 		raw_block = block_load(idx, &sz);
 		raw_block_hash(raw_block, sz, hash);
-		printf("%s\n", hash_str(hash, htmp));
+		printf("%s\n", hash_str(hash));
 		break;
 	default:
 		return usage(FALSE);
@@ -313,7 +315,7 @@ show_rx_history(raw_block_t *b, pact_rx_t *rx, pact_tx_t *txb, size_t num_tx)
 		pt = pact_for_rx_idx(pb, be32toh(tx->block_rx_idx));
 		prx = pact_rx_ptr(pt);
 		for (size_t ti = 0; ti < pact_num_rx(pt); ti++) {
-			if (pubkey_compare(rx->address, prx->address) == 0) {
+			if (pubkey_equals(rx->address, prx->address)) {
 				prev_amount += be64toh(prx->amount);
 			} else {
 				printf("      - \"%s\"\n",
@@ -338,7 +340,7 @@ show_pact_history(raw_block_t *b, raw_pact_t *t,
 	pact_rx_t *rx = pact_rx_ptr(t);
 	for (small_idx_t ti = 0; ti < pact_num_rx(t); ti++) {
 		for (size_t ai = 0; ai < num_addrs; ai++)
-			if (pubkey_compare(addrs[ai], rx->address) == 0)
+			if (pubkey_equals(addrs[ai], rx->address))
 				show_rx_history(b, rx, tx, pact_num_tx(t));
 
 		rx = (void *)rx + sizeof(pact_rx_t);
@@ -588,15 +590,38 @@ opt_node(int argc, char *argv[])
 }
 
 static int
-opt_resetblocks(int argc, char *argv[])
+opt_notars(int argc, char *argv[])
 {
-	//int res;
+	node_name_t node_name;
+	public_key_t *nrs;
+	big_idx_t n;
 
 	if (argc != 0)
 		return (FALSE);
 
-	// unlink blocks*.bin, rxcache.bin and notars.bin
-	printf("---\nresult: true\n");
+	notarscache_load();
+	nrs = notars(&n);
+	printf("---\nresult:\n");
+	for (big_idx_t i = 0; i < n; i++)
+		printf("  - %s\n", public_key_node_name(nrs[i], node_name));
+	printf("\n");
+
+	return (TRUE);
+}
+
+static int
+opt_reset(int argc, char *argv[])
+{
+	int r[3] = { 0, 0, 0 };
+
+	if (argc != 0)
+		return (FALSE);
+
+	r[0] = blocks_remove();
+	r[1] = log_remove();
+	r[2] = cache_remove();
+
+	printf("---\nresult: %s\n", r[0] && r[1] && r[2] ? "true" : "false");
 
 	return (TRUE);
 }
@@ -622,16 +647,9 @@ main(int argc, char *argv[])
 	if (argc == 1)
 		return usage(FALSE);
 
-	loglevel = 0;
+	log_setlevel(0);
 
 	config_load();
-
-	if (!lockfile_create()) {
-		lprintf("couldn't create lockfile");
-		exit(EX_TEMPFAIL);
-	}
-	if (!lockfile_is_locked())
-		system("tifanetd -f -s");
 
 	node_keypair_load();
 	wallets_load();
@@ -644,28 +662,39 @@ exit(1);
 		blockchain_load();
 		block_last_load();
 	}
-	rxcache_load();
-
 	argc -= 2;
 	argv += 2;
+
 	if (strcmp(opt, "-h") == 0 || strcmp(opt, "help") == 0)
 		return usage(TRUE);
-	else if (strcmp(opt, "wallets") == 0 || strcmp(opt, "wallet") == 0)
-		return opt_wallets(argc, argv);
-	else if (strcmp(opt, "addresses") == 0 || strcmp(opt, "address") == 0)
-		return opt_addresses(argc, argv);
-	else if (strcmp(opt, "history") == 0)
-		return opt_history(argc, argv);
-	else if (strcmp(opt, "blocks") == 0 || strcmp(opt, "block") == 0)
-		return opt_blocks(argc, argv);
-	else if (strcmp(opt, "blockhash") == 0)
-		return opt_blockhash(argc, argv);
-	else if (strcmp(opt, "send") == 0)
-		return opt_send(argc, argv);
-	else if (strcmp(opt, "node") == 0)
+	if (strcmp(opt, "node") == 0)
 		return opt_node(argc, argv);
-	else if (strcmp(opt, "resetblocks") == 0)
-		return opt_resetblocks(argc, argv);
+	if (strcmp(opt, "notars") == 0)
+		return opt_notars(argc, argv);
+	if (strcmp(opt, "reset") == 0)
+		return opt_reset(argc, argv);
+
+	if (!lockfile_create()) {
+		lprintf("couldn't create lockfile");
+		exit(EX_TEMPFAIL);
+	}
+	if (!lockfile_is_locked())
+		system("tifanetd -f -s");
+
+	rxcache_load();
+
+	if (strcmp(opt, "wallets") == 0 || strcmp(opt, "wallet") == 0)
+		return opt_wallets(argc, argv);
+	if (strcmp(opt, "addresses") == 0 || strcmp(opt, "address") == 0)
+		return opt_addresses(argc, argv);
+	if (strcmp(opt, "history") == 0)
+		return opt_history(argc, argv);
+	if (strcmp(opt, "blocks") == 0 || strcmp(opt, "block") == 0)
+		return opt_blocks(argc, argv);
+	if (strcmp(opt, "blockhash") == 0)
+		return opt_blockhash(argc, argv);
+	if (strcmp(opt, "send") == 0)
+		return opt_send(argc, argv);
 
 	return (usage(FALSE));
 }

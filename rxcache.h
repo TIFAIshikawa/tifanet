@@ -33,7 +33,7 @@
 #include "pact.h"
 #include "block.h"
 
-typedef struct __rxcache {
+typedef struct __attribute__((__packed__)) __rxcache {
 	big_idx_t block_idx;
 	small_idx_t block_rx_idx;
 	pact_rx_t rx;

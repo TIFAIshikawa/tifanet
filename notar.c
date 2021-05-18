@@ -57,8 +57,6 @@ static big_idx_t __next_notar_idx = 0;
 static int __is_notar = FALSE;
 static big_idx_t __notars_last_block_idx = 0;
 
-static public_key_t __notars_prev[2];
-
 static public_key_t *__pending_notars = NULL;
 static small_idx_t __pending_notars_base = 0;
 static small_idx_t __pending_notars_size = 0;
@@ -70,6 +68,8 @@ static event_info_t *__notar_announce_timer = NULL;
 static void notar_tick(event_info_t *info, event_flags_t eventtype);
 static void schedule_generate_block_retry(void);
 static void notar_pending_remove(public_key_t new_notar);
+static big_idx_t notar_elect_raw_block(big_idx_t raw_block_idx);
+static void *notar_block0(void);
 
 big_idx_t
 notars_last_block_idx(void)
@@ -99,14 +99,7 @@ node_is_notar(void)
 static int
 should_generate_block(void)
 {
-	int res;
-	node_name_t n1, n2;
-
-	public_key_node_name(__notars[__next_notar_idx], n1);
-	public_key_node_name(node_public_key(), n2);
-	res = pubkey_compare(__notars[__next_notar_idx], node_public_key());
-
-	return (res == 0);
+	return (pubkey_equals(__notars[__next_notar_idx], node_public_key()));
 }
 
 static void
@@ -144,7 +137,7 @@ int
 notar_exists(public_key_t notar)
 {
 	for (big_idx_t i = 0; i < __notars_size; i++) {
-		if (pubkey_compare(__notars[i], notar) == 0)
+		if (pubkey_equals(__notars[i], notar))
 			return (TRUE);
 	}
 
@@ -158,7 +151,7 @@ notar_add(public_key_t new_notar)
 	big_idx_t ia = 0;
 	int cr;
 
-	if (pubkey_compare(node_public_key(), new_notar) == 0)
+	if (pubkey_equals(node_public_key(), new_notar))
 		__is_notar = TRUE;
 
 	for (big_idx_t i = 0; i < __notars_count; i++) {
@@ -200,20 +193,21 @@ notar_remove(public_key_t remove_notar)
 	big_idx_t i;
 
 	for (i = 0; i < __notars_count; i++)
-		if (pubkey_compare(__notars[i], remove_notar) == 0)
+		if (pubkey_equals(__notars[i], remove_notar))
 			break;
 
 	if (i == __notars_count)
 		return;
 
-	if (pubkey_compare(node_public_key(), remove_notar) == 0)
+	if (pubkey_equals(node_public_key(), remove_notar))
 		__is_notar = FALSE;
 
 #ifdef DEBUG_NOTAR
 	public_key_node_name(remove_notar, node_name);
 	lprintf("notar_remove: removing %s", node_name);
 #endif
-	for (; i < __notars_count - 1; i++)
+	__notars_count--;
+	for (; i < __notars_count; i++)
 		bcopy(__notars[i + 1], __notars[i], sizeof(public_key_t));
 	bzero(__notars[i], sizeof(public_key_t));
 }
@@ -238,16 +232,18 @@ schedule_generate_block_retry(void)
 //	__notar_timer = timer_set(100, notar_tick, NULL);
 }
 
-void
-notar_elect_next(void)
+static big_idx_t
+notar_elect_raw_block(big_idx_t raw_block_idx)
 {
 	raw_block_t *raw_block;
-	node_name_t name;
 	big_idx_t idx;
-	size_t size;
 	hash_t hash;
+	size_t size;
 
-	raw_block = raw_block_last(&size);
+	if (!(raw_block = block_load(raw_block_idx, &size)))
+		FAIL(EX_SOFTWARE, "notar_elect_raw_block: invalid block index "
+			"%ju", raw_block_idx);
+	
 	bzero(hash, sizeof(hash_t));
 	crypto_generichash(hash, sizeof(hash_t), (void *)raw_block, size,
 			   NULL, 0);
@@ -256,20 +252,25 @@ notar_elect_next(void)
 
 	idx = idx % __notars_count;
 
-	__next_notar_idx = idx;
+	return (idx);
+}
 
-	lprintf("next block %ju->%s (%d)", block_idx_last() + 1,
-		public_key_node_name(__notars[__next_notar_idx], name), idx);
+void
+notar_elect_next(void)
+{
+	node_name_t name;
+
+	__next_notar_idx = notar_elect_raw_block(block_idx_last());
+
+	lprintf("block(%ju) = %s (%d)", block_idx_last() + 1,
+		public_key_node_name(__notars[__next_notar_idx], name),
+		__next_notar_idx);
 
 #ifdef DEBUG_NOTAR
 	for (big_idx_t i = 0; i < __notars_count; i++)
 		lprintf("%ld: %s", i, public_key_node_name(__notars[i], name));
 	lprintf("-----");
 #endif
-
-	bcopy(__notars_prev[0], __notars_prev[1], sizeof(public_key_t));
-	bcopy(__notars[__next_notar_idx], __notars_prev[0],
-		sizeof(public_key_t));
 
 	if (should_generate_block() && !blockchain_is_updating()) {
 		if (!has_pending_pacts())
@@ -279,13 +280,50 @@ notar_elect_next(void)
 	}
 }
 
-void *
-notar_prev(big_idx_t idx)
+static void *
+notar_block0(void)
 {
-	if (idx >= 2)
-		return ((void *)pubkey_zero);
+	raw_block_t *rb;
+	size_t sz;
 
-	return (__notars_prev[idx]);
+	rb = block_load(0, &sz);
+
+	return (rb->notar);
+}
+
+void *
+notar_denounce_emergency_node(void)
+{
+	return (notar_block0());
+}
+
+void *
+notar_denounce_node(uint8_t node_idx)
+{
+	void *denounce_node;
+	big_idx_t idx;
+	int8_t found;
+	void *res;
+
+	if (node_idx >= 2)
+		FAIL(EX_SOFTWARE, "notar_denounce_node: illegal index %hhd",
+			node_idx);
+
+	if ((idx = block_idx_last()) < 2)
+		return (notar_denounce_emergency_node());
+
+	denounce_node = notar_next();
+
+	for (idx -= 1, found = -1; idx > 0; idx--) {
+		res = __notars[notar_elect_raw_block(idx)];
+		if (!pubkey_equals(res, denounce_node))
+			found++;
+
+		if (found == node_idx)
+			return (res);
+	}
+
+	return (notar_denounce_emergency_node());
 }
 
 void
@@ -323,7 +361,7 @@ notar_raw_block_add(raw_block_t *raw_block)
 	raw_block_timeout_t *rb;
 
 	rb = (raw_block_timeout_t *)raw_block;
-	if (block_flags(raw_block) & BLOCK_FLAG_DENOUNCE_NOTAR)
+	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
 		return notar_remove(rb->denounced_notar);
 
 	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR)
@@ -377,7 +415,7 @@ notarscache_read(FILE *f)
 	}
 
 	for (big_idx_t i = 0; i < __notars_count; i++) {
-		if (pubkey_compare(__notars[i], node_public_key()) == 0) {
+		if (pubkey_equals(__notars[i], node_public_key())) {
 			__is_notar = TRUE;
 			break;
 		}
@@ -410,7 +448,7 @@ static int
 notar_pending_exists(public_key_t notar)
 {
 	for (size_t i = 0; i < PENDING_NOTARS_MAX; i++)
-		if (pubkey_compare(__pending_notars[i], notar) == 0)
+		if (pubkey_equals(__pending_notars[i], notar))
 			return (TRUE);
 
 	return (FALSE);
@@ -445,13 +483,13 @@ notar_pending_remove(public_key_t remove_notar)
 	void *n;
 
 	n = __pending_notars + __pending_notars_base;
-	if (pubkey_compare(remove_notar, n) == 0) {
+	if (pubkey_equals(remove_notar, n)) {
 		notar_pending_next();
 		return;
 	}
 
 	for (size_t i = 0; i < PENDING_NOTARS_MAX; i++)
-		if (pubkey_compare(__pending_notars[i], remove_notar) == 0)
+		if (pubkey_equals(__pending_notars[i], remove_notar))
 			bzero(__pending_notars[i], sizeof(public_key_t));
 }
 
@@ -470,7 +508,7 @@ notar_pending_next(void)
 		if (__pending_notars_base == __pending_notars_size)
 			__pending_notars_base = 0;
 
-		if (pubkey_compare(res, (void *)pubkey_zero) != 0)
+		if (!pubkey_equals(res, (void *)pubkey_zero))
 			return (res);
 	}
 

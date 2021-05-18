@@ -132,7 +132,9 @@ main(int argc, char *argv[])
 	config_load();
 
 	if (should_fork)
-		openlog();
+		log_open();
+
+	peerlist_load();
 
 	if (!lockfile_create() || lockfile_is_locked()) {
 		lprintf("lockfile already locked. Exiting.");
@@ -142,7 +144,6 @@ main(int argc, char *argv[])
 
 	node_keypair_load();
 	wallets_load();
-	peerlist_load();
 
 	if (config_is_caches_only()) {
 		blocks_remove();

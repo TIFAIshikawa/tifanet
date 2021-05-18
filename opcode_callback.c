@@ -467,8 +467,9 @@ op_blockannounce(event_info_t *info)
 		// get block from block storage (which is permanent, whereas
 		// nev->userdata will be freed), then redistribute
         	block = block_load(index, &size);
-        	message_broadcast(OP_BLOCKANNOUNCE, block, size,
-			htobe64(index));
+		if (block)
+        		message_broadcast(OP_BLOCKANNOUNCE, block, size,
+				htobe64(index));
 	}
 
 	message_cancel(info);
@@ -565,13 +566,12 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 void
 op_pact_client(event_info_t *info, network_event_t *nev)
 {
-	char tmp[SMALL_HASH_STR_LENGTH];
 	op_pact_response_t *response;
 
 	response = nev->userdata;
 	printf("  - result: %s\n", schkerror(be32toh(response->code)));
 	printf("    code: %u\n", be32toh(response->code));
-	printf("    pact_hash: %s\n", small_hash_str(response->pact_hash, tmp));
+	printf("    pact_hash: %s\n", small_hash_str(response->pact_hash));
 
 	message_cancel(info);
 }

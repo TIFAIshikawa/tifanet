@@ -73,11 +73,31 @@ static event_info_t *__peerlist_timer = NULL;
 
 static void peerlist_bootstrap(void);
 
+static void
+__peerlist_load_entry_sanitize(char *tmp)
+{
+	size_t len;
+
+	len = strlen(tmp);
+	if (len > 1) {
+		if (tmp[len - 1] == '\n') {
+			tmp[len - 1] = '\0';
+			len--;
+		}
+	}
+	if (len > 1) {
+		if (tmp[len - 1] == '\r') {
+			tmp[len - 1] = '\0';
+			len--;
+		}
+	}
+}
+
 void
 peerlist_load()
 {
 	FILE *f;
-	int r, s, len;
+	int r, s;
 	char file[MAXPATHLEN + 1];
 	char tmp[INET6_ADDRSTRLEN + 2];
 	struct in_addr a4;
@@ -90,15 +110,12 @@ peerlist_load()
 		r = s = 0;
 		while (!feof(f)) {
 			fgets(tmp, INET6_ADDRSTRLEN + 1, f);
-			len = strlen(tmp);
-			if (len > 1) {
-				tmp[len - 1] = '\0';
-				if (inet_pton(AF_INET, tmp, &a4) == 1) {
-					peerlist_add_ipv4(a4);
-					s++;
-				}
-				r++;
+			__peerlist_load_entry_sanitize(tmp);
+			if (inet_pton(AF_INET, tmp, &a4) == 1) {
+				peerlist_add_ipv4(a4);
+				s++;
 			}
+			r++;
 		}
 		fclose(f);
 		lprintf("peerlist4: %d/%d peers loaded from cache", s, r - 1);
@@ -111,15 +128,12 @@ peerlist_load()
 		r = s = 0;
 		while (!feof(f)) {
 			fgets(tmp, INET6_ADDRSTRLEN + 1, f);
-			len = strlen(tmp);
-			if (len > 1) {
-				tmp[len - 1] = '\0';
-				if (inet_pton(AF_INET6, tmp, &a6) == 1) {
-					peerlist_add_ipv6(a6);
-					s++;
-				}
-				r++;
+			__peerlist_load_entry_sanitize(tmp);
+			if (inet_pton(AF_INET6, tmp, &a6) == 1) {
+				peerlist_add_ipv6(a6);
+				s++;
 			}
+			r++;
 		}
 		fclose(f);
 		lprintf("peerlist6: %d/%d peers loaded from cache", s, r - 1);

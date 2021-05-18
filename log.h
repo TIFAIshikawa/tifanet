@@ -45,9 +45,13 @@
 #define FAILRET(reason, fmt, ...) { lprintf(fmt, __VA_ARGS__); return (reason);}
 #define FAILBOOL(...) { lprintf(__VA_ARGS__); return (FALSE); }
 
-extern uint8_t loglevel;
+extern void log_setlevel(uint8_t loglevel);
 
-extern void openlog(void);
+extern void log_open(void);
+
+extern FILE *log_file(void);
 extern void lprintf(const char *fmt, ...);
+
+extern int log_remove(void);
 
 #endif /* __TIFA_LOG_H */

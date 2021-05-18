@@ -141,8 +141,7 @@ rxcaches_for_address(address_t *address, size_t *amount)
 	pk = (void *)address_public_key(address);
 	for (big_idx_t i = 0; i < __rxcache_size; i++) {
 		item = __rxcache[i];
-		if (pubkey_compare(item.rx.address, pk) == 0 &&
-			 item.rx.amount) {
+		if (pubkey_equals(item.rx.address, pk) && item.rx.amount) {
 			if (!res) {
 				res = malloc(sizeof(rxcache_t *) * 10);
 #ifdef DEBUG_ALLOC
@@ -245,6 +244,9 @@ rxcache_raw_block_add(raw_block_t *raw_block)
 	big_idx_t idx;
 	raw_pact_t *t;
 	small_idx_t nt, ntx, nrx, rxidx;
+
+	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
+		return;
 
 	idx = block_idx(raw_block);
 
@@ -385,7 +387,7 @@ unspent_for_public_key(public_key_t address)
 	for (big_idx_t i = 0; i < __rxcache_size; i++) {
 		item = __rxcache[i];
 
-		if (pubkey_compare(item.rx.address, address) == 0)
+		if (pubkey_equals(item.rx.address, address))
 			res += be64toh(item.rx.amount);
 	}
 
