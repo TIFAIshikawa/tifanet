@@ -282,7 +282,6 @@ pact_pending_add(raw_pact_t *pact)
 	}
 
 	__pending_pacts[i] = pact;
-	__pending_pacts_size++;
 
 	return (NO_ERR);
 }
@@ -290,33 +289,56 @@ pact_pending_add(raw_pact_t *pact)
 void
 pact_pending_remove(raw_pact_t *t)
 {
-	raw_pact_t *pt;
 	pact_tx_t *ttx, *ptx;
+	raw_pact_t *pt;
+	int remove;
 
+int q = 0;
 	for (small_idx_t i = 0; i < __pending_pacts_size; i++) {
 		if (!(pt = __pending_pacts[i]))
 			continue;
+q++;
+
+		remove = 0;
 
 		ttx = (void *)t + sizeof(raw_pact_t);
-		for (small_idx_t tri = 0; tri < be32toh(t->num_tx); tri++) {
+		for (small_idx_t tri = 0; tri < pact_num_tx(t); tri++) {
 			ptx = (void *)pt + sizeof(raw_pact_t);
-			for (small_idx_t pri = 0; pri < be32toh(pt->num_tx); pri++) {
+			for (small_idx_t pri = 0; pri < pact_num_tx(pt); pri++){
 				if (ttx->block_idx == ptx->block_idx &&
 				    ttx->block_rx_idx == ptx->block_rx_idx) {
-					__pending_pacts[i] = NULL;
+					remove = 1;
 					continue;
 				}
 				ptx = (void *)ptx + sizeof(pact_tx_t);
 			}
 			ttx = (void *)ttx + sizeof(pact_tx_t);
 		}
+
+		if (remove) {
+#ifdef DEBUG_ALLOC
+			lprintf("-RAWPACT %p", pt);
+#endif
+			__pending_pacts[i] = NULL;
+			free(pt);
+		}
 	}
+if (q) lprintf("PENDINGPACTS: %d", q);
 }
 
 int
 has_pending_pacts(void)
 {
-	return (__pending_pacts_size > 0);
+	time64_t tm;
+
+	tm = time(NULL);
+
+	for (small_idx_t i = 0; i < __pending_pacts_size; i++)
+		if (__pending_pacts[i])
+			if (__pending_pacts[i]->time <= tm)
+				return (TRUE);
+
+	return (FALSE);
 }
 
 raw_pact_t **
@@ -334,7 +356,7 @@ pacts_pending(small_idx_t *size)
 	for (small_idx_t i = 0; i < __pending_pacts_size; i++) {
 		if (__pending_pacts[i]) {
 			s++;
-			__pending_pacts[j] = __pending_pacts[i];
+// TODO fix this...	__pending_pacts[j] = __pending_pacts[i];
 			j++;
 		}
 	}
@@ -454,6 +476,7 @@ pact_delay(raw_pact_t *rt, int nesting)
 		tx = (void *)tx + sizeof(pact_tx_t);
 	}
 
+return 0;
 	return (res / 5);
 }
 

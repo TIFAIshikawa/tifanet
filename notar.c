@@ -48,6 +48,7 @@
 #include <time.h>
 #include <sys/time.h>
 
+#define BLOCK_EMPTY_DELAY_USECONDS 3000
 #define PENDING_NOTARS_MAX 100
 
 static public_key_t *__notars = NULL;
@@ -121,7 +122,7 @@ notar_announce(void)
 	message_broadcast(OP_NOTARANNOUNCE, node_public_key(), sizeof(hash_t),
 		0);
 
-	delay = randombytes_random() % 3600000;
+	delay = randombytes_random() % HOUR_USECONDS;
 
 	__notar_announce_timer = timer_set(delay, __notar_announce_tick, NULL);
 }
@@ -217,7 +218,8 @@ notar_tick(event_info_t *info, event_flags_t eventtype)
 {
 	__notar_timer = NULL;
 
-	block_generate_next();
+	if (should_generate_block())
+		block_generate_next();
 }
 
 static void
@@ -226,10 +228,7 @@ schedule_generate_block_retry(void)
 	if (__notar_timer)
 		return;
 
-//	lprintf("should create block but no pacts, delaying");
-
-	__notar_timer = timer_set(3000, notar_tick, NULL);
-//	__notar_timer = timer_set(100, notar_tick, NULL);
+	__notar_timer = timer_set(BLOCK_EMPTY_DELAY_USECONDS, notar_tick, NULL);
 }
 
 static big_idx_t
@@ -302,6 +301,7 @@ notar_denounce_node(uint8_t node_idx)
 {
 	void *denounce_node;
 	big_idx_t idx;
+	void *denouncer1;
 	int8_t found;
 	void *res;
 
@@ -314,10 +314,18 @@ notar_denounce_node(uint8_t node_idx)
 
 	denounce_node = notar_next();
 
+	denouncer1 = NULL;
 	for (idx -= 1, found = -1; idx > 0; idx--) {
 		res = __notars[notar_elect_raw_block(idx)];
-		if (!pubkey_equals(res, denounce_node))
-			found++;
+		if (!pubkey_equals(res, denounce_node)) {
+			if (!denouncer1) {
+				found++;
+				denouncer1 = res;
+			} else {
+				if (!pubkey_equals(res, denouncer1))
+					found++;
+			}
+		}
 
 		if (found == node_idx)
 			return (res);

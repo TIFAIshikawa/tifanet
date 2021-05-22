@@ -34,10 +34,10 @@
 #include <sys/param.h>
 #include <netinet/in.h>
 
-#define DEBUG_NETWORK 1
+//#define DEBUG_NETWORK 1
 //#define DEBUG_ALLOC 1
-//#define DEBUG_PEERLIST 1
-#define DEBUG_NOTAR 1
+#define DEBUG_PEERLIST 1
+//#define DEBUG_NOTAR 1
 /*
  * Roadmap
  * ver: [eta date] description
@@ -86,6 +86,8 @@
 #define MAXPACKETSIZE (20 * 1024 * 1024)
 
 #define CACHE_HASH_BLOCK_INTERVAL 1000
+
+#define HOUR_USECONDS 3600000
 
 typedef uint32_t small_idx_t;
 typedef uint64_t big_idx_t;

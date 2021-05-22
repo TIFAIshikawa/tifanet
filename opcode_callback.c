@@ -287,6 +287,8 @@ op_peerlist_client(event_info_t *info, network_event_t *nev)
 		peerlist_add_ipv6(addr6_list[i]);
 
 	message_cancel(info);
+
+	peerlist_save();
 }
 
 void
@@ -356,11 +358,9 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 	lprintf("last block is #%ju (our last is %ju)", rmt_idx, lcl_idx);
 
 	if (lcl_idx < rmt_idx) {
-		blockchain_set_updating(1);
-		notar_elect_next();
 		getblocks(rmt_idx);
+		notar_elect_next();
 	} else {
-		blockchain_set_updating(0);
 		daemon_start();
 		notar_elect_next();
 	}
@@ -519,36 +519,40 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 	size_t size;
 	time64_t tm;
 	message_t *msg;
-	raw_pact_t *t;
+	raw_pact_t *p;
 	op_pact_response_t *response;
 
 	msg = network_message(info);
 
-	t = nev->userdata;
-	size = pact_size(t);
+	p = nev->userdata;
+	size = pact_size(p);
 
 	response = calloc(1, sizeof(op_pact_response_t));
 #ifdef DEBUG_ALLOC
 	lprintf("+USERDATA %p PACT", response);
 #endif
-	pact_hash(t, response->pact_hash);
+	pact_hash(p, response->pact_hash);
 
 	if (size != be32toh(msg->payload_size)) {
 		err = ERR_MALFORMED;
 	} else {
-		if ((err = raw_pact_validate(t)) == NO_ERR)
-			err = pact_pending_add(t);
+		if ((err = raw_pact_validate(p)) == NO_ERR)
+			err = pact_pending_add(p);
 	}
 	if (err == NO_ERR)
-		if ((delay = pact_delay(t, 0)) >= 10)
+		if ((delay = pact_delay(p, 0)) >= 10)
 			err = ERR_RX_FLOOD;
 	if (err == NO_ERR) {
 		tm = time(NULL);
-		t->time = htobe64(tm + delay * 60);
+		p->time = htobe64(tm + delay);
 	}
 
-	if (err != NO_ERR)
-		free(t);
+	if (err != NO_ERR) {
+#ifdef DEBUG_ALLOC
+		lprintf("-RAWPACT %p", p);
+#endif
+		free(p);
+	}
 	response->code = htobe32(err);
 	
 	nev->state = NETWORK_EVENT_STATE_HEADER;

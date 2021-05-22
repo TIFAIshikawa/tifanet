@@ -57,6 +57,8 @@
 #include "pact.h"
 
 #define BLOCKS_FILESIZE_MAX 268435456
+#define BLOCK_POLL_INTERVAL_USECONDS 300
+#define BLOCK_DENOUNCE_DELAY_SECONDS 19
 
 // 3 mmap'ed files
 static char *__blocks = NULL;
@@ -69,8 +71,6 @@ static size_t __raw_block_last_size = 0;
 static raw_block_timeout_t *__raw_block_timeout_tmp = NULL;
 
 static big_idx_t __getblocks_target_idx = 0;
-
-static int __blockchain_is_updating = 0;
 
 static event_info_t *__block_poll_timer = NULL;
 
@@ -217,16 +217,15 @@ cache_in_pacts(rxcache_t *cache, pact_t **pacts,
 }
 
 static int
-cache_in_raw_pacts(rxcache_t *cache, raw_pact_t **pacts,
-	small_idx_t tsize)
+cache_in_raw_pacts(rxcache_t *cache, raw_pact_t **pacts, small_idx_t tsize)
 {
-	raw_pact_t *t;
+	raw_pact_t *p;
 	pact_tx_t *tx;
 
 	for (small_idx_t i = 0; i < tsize; i++) {
-		t = pacts[i];
-		tx = (void *)t + sizeof(raw_pact_t);
-		for (small_idx_t ri = 0; ri < be32toh(t->num_tx); ri++) {
+		p = pacts[i];
+		tx = (void *)p + sizeof(raw_pact_t);
+		for (small_idx_t ri = 0; ri < pact_num_tx(p); ri++) {
 			if (cache->block_idx == tx->block_idx &&
 			    cache->block_rx_idx == tx->block_rx_idx)
 				return (TRUE);
@@ -244,7 +243,7 @@ block_reward(big_idx_t idx)
 }
 
 void
-add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt)
+add_notar_reward(block_t *block, raw_pact_t **rp, size_t nrp)
 {
 	size_t tsize;
 	wallet_t *wallet;
@@ -272,8 +271,7 @@ add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt)
 	if ((caches = rxcaches_for_address(addresses[0], &tsize))) {
 		for (size_t i = 0; i < tsize; i++) {
 			if (!cache_in_pacts(caches[i],
-			    block->pacts, block->num_pacts) &&
-			    !cache_in_raw_pacts(caches[i], rt, nrt)) {
+			    block->pacts, block->num_pacts)) {
 				pact_tx_add(t, caches[i]->block_idx,
 					caches[i]->block_rx_idx);
 				amount += be64toh(caches[i]->rx.amount);
@@ -294,17 +292,22 @@ static block_t *
 block_create(void)
 {
 	block_t *res;
+	time64_t tm;
 	void *pn;
 
 	res = block_alloc();
 
 	res->time = time(NULL);
 
-if (__raw_block_last) {
-	res->index = block_idx_last() + 1;
-	raw_block_hash(__raw_block_last, __raw_block_last_size,
-		res->prev_block_hash);
-}
+	if (__raw_block_last) {
+		res->index = block_idx_last() + 1;
+		raw_block_hash(__raw_block_last, __raw_block_last_size,
+			res->prev_block_hash);
+
+		tm = be64toh(__raw_block_last->time);
+		if (tm > res->time)
+			res->time = tm;
+	}
 
 	pn = notar_pending_next();
 	res->flags |= pn != NULL ? BLOCK_FLAG_NEW_NOTAR : 0;
@@ -462,7 +465,8 @@ block_denounce_timeout_init(raw_block_timeout_t *rt)
 	size = sizeof(raw_block_timeout_t);
 
 	rt->index = htobe64(block_idx_last() + 1);
-	rt->time = htobe64(block_time(raw_block_last(&sz)) + 19);
+	rt->time = htobe64(block_time(raw_block_last(&sz)) +
+		BLOCK_DENOUNCE_DELAY_SECONDS);
 	rt->flags = htobe64(BLOCK_FLAG_TIMEOUT);
 	raw_block_hash((raw_block_t *)rt, size, rt->prev_block_hash);
 	bcopy(notar_next(), rt->denounced_notar, sizeof(public_key_t));
@@ -484,9 +488,9 @@ block_denounce_timeout_create(void)
 
 	if (!__raw_block_timeout_tmp) {
 		__raw_block_timeout_tmp = calloc(1, size);
-//#ifdef DEBUG_ALLOC
+#ifdef DEBUG_ALLOC
 		lprintf("+RAW_BLOCK_TIMEOUT_TMP %p", __raw_block_timeout_tmp);
-//#endif
+#endif
 		block_denounce_timeout_init(__raw_block_timeout_tmp);
 	}
 	rb = (raw_block_t *)__raw_block_timeout_tmp;
@@ -522,9 +526,10 @@ raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize)
 			"future: %ld vs %ld", block_idx(raw_block), bt, ct);
 		return (FALSE);
 	}
-	if (lbt + 19 != bt) {
+	if (lbt + BLOCK_DENOUNCE_DELAY_SECONDS != bt) {
 		lprintf("denounce timeout block with index %ju has invalid "
-			"time: %ld vs %ld", block_idx(raw_block), bt, lbt + 19);
+			"time: %ld vs %ld", block_idx(raw_block), bt,
+			lbt + BLOCK_DENOUNCE_DELAY_SECONDS);
 		return (FALSE);
 	}
 
@@ -630,7 +635,6 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 		if (block_idx(raw_block) > block_idx(__raw_block_last) + 1) {
 			lprintf("gotten block with index %ju, reject for now",
 				block_idx(raw_block));
-			blockchain_set_updating(1);
 			blockchain_update();
 			return (FALSE);
 		}
@@ -736,9 +740,9 @@ static void
 raw_block_timeout_free(void)
 {
 	if (__raw_block_timeout_tmp) {
-//#ifdef DEBUG_ALLOC
+#ifdef DEBUG_ALLOC
 		lprintf("-RAW_BLOCK_TIMEOUT_TMP %p", __raw_block_timeout_tmp);
-//#endif
+#endif
 		free(__raw_block_timeout_tmp);
 		__raw_block_timeout_tmp = NULL;
 	}
@@ -792,9 +796,9 @@ raw_block_timeout_fprint(log_file(), rb);
 
 	if (!__raw_block_timeout_tmp) {
 		__raw_block_timeout_tmp = malloc(blocksize);
-//#ifdef DEBUG_ALLOC
+#ifdef DEBUG_ALLOC
 		lprintf("+RAW_BLOCK_TIMEOUT_TMP %p", __raw_block_timeout_tmp);
-//#endif
+#endif
 		bcopy(raw_block, __raw_block_timeout_tmp, blocksize);
 		return;
 	} else {
@@ -835,6 +839,9 @@ raw_block_process(raw_block_t *raw_block, size_t blocksize)
 	raw_block_write(raw_block, blocksize);
 
 	raw_block_timeout_free();
+
+	if (block_idx_last() >= __getblocks_target_idx)
+		__getblocks_target_idx = 0;
 
 	notar_elect_next();
 }
@@ -893,7 +900,7 @@ block_finalize(block_t *block, size_t *blocksize)
 	}
 	for (small_idx_t ti = 0; ti < rts; ti++) {
 		rt = rtl[ti];
-//		if (be64toh(rt->time) < tm) {
+//		if (be64toh(rt->time) <= tm) {
 			size = sizeof(raw_pact_t);
 			size += be32toh(rt->num_tx) * sizeof(pact_tx_t);
 			size += be32toh(rt->num_rx) * sizeof(pact_rx_t);
@@ -934,7 +941,7 @@ block_finalize(block_t *block, size_t *blocksize)
 
 	for (small_idx_t ti = 0; ti < max_rtr; ti++) {
 		rt = rtl[ti];
-//		if (be64toh(rt->time) < tm) {
+//		if (be64toh(rt->time) <= tm) {
 			size = sizeof(raw_pact_t);
 			size += be32toh(rt->num_tx) * sizeof(pact_tx_t) +
 				be32toh(rt->num_rx) * sizeof(pact_rx_t);
@@ -1155,7 +1162,6 @@ raw_block_broadcast(big_idx_t index)
 void
 blockchain_update()
 {
-	blockchain_set_updating(1);
 	if (!message_send_random(OP_LASTBLOCKINFO, NULL, 0, 0)) {
 #ifdef DEBUG_NETWORK
 		lprintf("blockchain_update: failed retrieving last block, "
@@ -1165,16 +1171,10 @@ blockchain_update()
 	}
 }
 
-void
-blockchain_set_updating(int updating)
-{
-	__blockchain_is_updating = updating;
-}
-
 int
 blockchain_is_updating(void)
 {
-	return __blockchain_is_updating;
+	return (__getblocks_target_idx != 0);
 }
 
  
@@ -1203,7 +1203,6 @@ getblocks(big_idx_t target_idx)
 	}
 
 	__getblocks_target_idx = 0;
-	blockchain_set_updating(0);
 
 	lprintf("fully synchronized");
 
@@ -1231,20 +1230,37 @@ blocks_remove(void)
 }
 
 static void
+block_getnext_broadcast(void)
+{
+	big_idx_t nextidx;
+
+	nextidx = block_idx(__raw_block_last) + 1;
+	message_broadcast(OP_GETBLOCK, NULL, 0, htobe64(nextidx));
+}
+
+static void
 __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 {
-	time_t t;
+	time64_t t;
+	time64_t last;
 
 	__block_poll_timer = NULL;
 
 	t = time(NULL);
-	if (t > block_time(__raw_block_last) + 5) {
-		lprintf("no blocks seen in the last 5 seconds, polling...");
-		blockchain_update();
-	}
-	if (t > block_time(__raw_block_last) + 18 && !__getblocks_target_idx) {
-		lprintf("no blocks seen in the last 18 seconds, denouncing...");
-		block_denounce_timeout_create();
+
+	if (!blockchain_is_updating()) {
+		last = block_time(__raw_block_last);
+		if (t > last + 2) {
+			lprintf("no blocks seen in the last 2 seconds, "
+				"polling...");
+			block_getnext_broadcast();
+			blockchain_update();
+		}
+		if (t >= last + BLOCK_DENOUNCE_DELAY_SECONDS) {
+			lprintf("no blocks seen in the last %d seconds, "
+				"denouncing...", BLOCK_DENOUNCE_DELAY_SECONDS);
+			block_denounce_timeout_create();
+		}
 	}
 	block_poll_start();
 }
@@ -1255,5 +1271,6 @@ block_poll_start(void)
 	if (__block_poll_timer)
 		return;
 
-	__block_poll_timer = timer_set(3000, __block_poll_tick, NULL);
+	__block_poll_timer = timer_set(BLOCK_POLL_INTERVAL_USECONDS,
+		__block_poll_tick, NULL);
 }

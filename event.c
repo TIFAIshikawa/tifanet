@@ -149,8 +149,8 @@ timer_set(uint64_t msec_delay, event_callback_t callback, void *payload)
 
 	ts.it_interval.tv_sec = 0;
 	ts.it_interval.tv_nsec = 0;
-	ts.it_value.tv_sec = msec_delay / 1000 + 1;
-	ts.it_value.tv_nsec = msec_delay % 1000 * 1000;
+	ts.it_value.tv_sec = msec_delay / 1000;
+	ts.it_value.tv_nsec = msec_delay % 1000 * 1000000;
 	timerfd_settime(res->ident, 0, &ts, NULL);
 
 	bzero(&event, sizeof(struct epoll_event));
