@@ -1258,7 +1258,8 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 		}
 		if (t >= last + BLOCK_DENOUNCE_DELAY_SECONDS) {
 			lprintf("no blocks seen in the last %d seconds, "
-				"denouncing...", BLOCK_DENOUNCE_DELAY_SECONDS);
+				"notar will be denounced...",
+				BLOCK_DENOUNCE_DELAY_SECONDS);
 			block_denounce_timeout_create();
 		}
 	}

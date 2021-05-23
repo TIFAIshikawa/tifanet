@@ -48,6 +48,7 @@ extern int node_is_notar(void);
 
 extern void notar_start(void);
 
+extern int notar_should_generate_block(void);
 extern void notar_elect_next(void);
 
 extern void *notar_denounce_emergency_node(void);

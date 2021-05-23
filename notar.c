@@ -97,8 +97,8 @@ node_is_notar(void)
 	return (__is_notar);
 }
 
-static int
-should_generate_block(void)
+int
+notar_should_generate_block(void)
 {
 	return (pubkey_equals(__notars[__next_notar_idx], node_public_key()));
 }
@@ -218,7 +218,7 @@ notar_tick(event_info_t *info, event_flags_t eventtype)
 {
 	__notar_timer = NULL;
 
-	if (should_generate_block())
+	if (notar_should_generate_block())
 		block_generate_next();
 }
 
@@ -271,7 +271,7 @@ notar_elect_next(void)
 	lprintf("-----");
 #endif
 
-	if (should_generate_block() && !blockchain_is_updating()) {
+	if (notar_should_generate_block() && !blockchain_is_updating()) {
 		if (!has_pending_pacts())
 			schedule_generate_block_retry();
 		else
