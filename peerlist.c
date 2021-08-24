@@ -52,6 +52,8 @@
 #include "event.h"
 #include "log.h"
 
+#define PEERLIST_SAVE_DELAY_MS 1000
+
 peerlist_t peerlist = {
 	.list4_size = 0,
 	.list6_size = 0,
@@ -70,6 +72,7 @@ static char *__network = "gamma";
 static const char *__bootstrap_server = "bootstrap.%s.tifa.network";
 
 static event_info_t *__peerlist_timer = NULL;
+static event_info_t *__peerlist_save_timer = NULL;
 
 static void peerlist_bootstrap(void);
 
@@ -145,8 +148,25 @@ peerlist_load()
 	peerlist_bootstrap();
 }
 
+static void
+__peerlist_save_tick(event_info_t *info, event_flags_t eventtype)
+{
+	__peerlist_save_timer = NULL;
+	peerlist_save_sync();
+}
+
 void
-peerlist_save()
+peerlist_save(void)
+{
+	if (__peerlist_save_timer)
+		return;
+
+	__peerlist_save_timer = timer_set(PEERLIST_SAVE_DELAY_MS,
+		__peerlist_save_tick, NULL);
+}
+
+void
+peerlist_save_sync(void)
 {
 	FILE *f;
 	int w, len;

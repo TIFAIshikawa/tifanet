@@ -36,15 +36,15 @@
 
 //#define DEBUG_NETWORK 1
 //#define DEBUG_ALLOC 1
-#define DEBUG_PEERLIST 1
+//#define DEBUG_PEERLIST 1
 //#define DEBUG_NOTAR 1
 /*
  * Roadmap
  * ver: [eta date] description
  *
- * 0.9: [etaunknown] Pact type III (Solidity & ERC20) ?
+ * 0.9: [etaunknown] Pact type III (Solidity compatible smart contracts) ?
  * 0.8: [etaunknown] Pact type II (masked pacts)
- *      [2021-07-01] Go live ???
+ *      [2021-09-01] Go live ???
  * 0.7: [2021-06-15] Nicify code
  * 0.6: [2021-05-23] Denounce notar, e.g. upon block timeout
  * 0.5: [2021-05-04] Robustify network: fault tolerance, e.g. fix possible

@@ -30,7 +30,6 @@
 #ifndef __TIFA_NETWORK_H
 #define __TIFA_NETWORK_H
 
-#include <ifaddrs.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include "node.h"

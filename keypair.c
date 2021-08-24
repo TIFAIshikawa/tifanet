@@ -211,37 +211,37 @@ keypair_verify_finalize(void *context, void *public_key, void *signature)
 }
 
 int
-pubkey_compare(void *l, void *r)
+pubkey_compare(const public_key_t l, const public_key_t r)
 {
 	return (memcmp(l, r, sizeof(public_key_t)));
 }
 
 int
-pubkey_equals(void *l, void *r)
+pubkey_equals(const public_key_t l, const public_key_t r)
 {
 	return (pubkey_compare(l, r) == 0);
 }
 
 int
-hash_compare(void *l, void *r)
+hash_compare(const void *l, const void *r)
 {
 	return (memcmp(l, r, sizeof(hash_t)));
 }
 
 int
-hash_equals(void *l, void *r)
+hash_equals(const void *l, const void *r)
 {
 	return (hash_compare(l, r) == 0);
 }
 
 int
-signature_compare(void *l, void *r)
+signature_compare(const void *l, const void *r)
 {
 	return (memcmp(l, r, sizeof(signature_t)));
 }
 
 int
-signature_equals(void *l, void *r)
+signature_equals(const void *l, const void *r)
 {
 	return (signature_compare(l, r) == 0);
 }

@@ -33,6 +33,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <sodium.h>
 #include <sysexits.h>
 #include <sys/stat.h>
@@ -56,14 +57,23 @@
 #include "rxcache.h"
 #include "pact.h"
 
-#define BLOCKS_FILESIZE_MAX 268435456
+#define BLOCKS_FILESIZE_MAX 268435456UL
+#define BLOCK_IDX_FILESIZE_MAX ((BLOCKS_FILESIZE_MAX * 8UL) / 256UL)
 #define BLOCK_POLL_INTERVAL_USECONDS 300
 #define BLOCK_DENOUNCE_DELAY_SECONDS 19
+#define BLOCK_TRANSIT_MESSAGES_MAX 20
+#define BLOCK_FUTURE_BUFFERS_MAX 20
 
-// 3 mmap'ed files
-static char *__blocks = NULL;
-static big_idx_t *__block_idxs = NULL;
-static big_idx_t *__last_block_idx = NULL;
+typedef struct __block_storage {
+	void *blocks;
+	big_idx_t *block_idxs;
+	big_idx_t first_block_idx;
+	big_idx_t last_block_idx;
+} block_storage_t;
+
+static block_storage_t **__block_storage = NULL;
+static block_storage_t *__block_storage_current = NULL;
+static size_t __num_block_storages = 0;
 
 static raw_block_t *__raw_block_last = NULL;
 static size_t __raw_block_last_size = 0;
@@ -74,6 +84,9 @@ static big_idx_t __getblocks_target_idx = 0;
 
 static event_info_t *__block_poll_timer = NULL;
 
+static message_t *__block_transit_messages[BLOCK_TRANSIT_MESSAGES_MAX] = { 0 };
+static raw_block_t *__block_future_buffer[BLOCK_FUTURE_BUFFERS_MAX] = { 0 };
+
 void raw_block_broadcast(big_idx_t index);
 void add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt);
 static int raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize);
@@ -82,6 +95,10 @@ static void raw_block_timeout_process(raw_block_t *raw_block);
 static void raw_block_timeout_free(void);
 static void raw_block_fprint_base(FILE *f, raw_block_t *raw_block);
 static void raw_block_timeout_fprint(FILE *f, raw_block_timeout_t *raw_block);
+static void block_transit_messages_cleanup(void);
+static raw_block_t *raw_block_future_get(big_idx_t idx);
+static void raw_block_future_free(raw_block_t *rb);
+
 
 big_idx_t
 block_idx_last()
@@ -93,7 +110,7 @@ block_idx_last()
 			return (0);
 	}
 
-	return (*__last_block_idx);
+	return (__raw_block_last ? block_idx(__raw_block_last) : 0);
 }
 
 raw_block_t *
@@ -111,7 +128,8 @@ mmap_file(char *filename, off_t truncsize)
 	void *res;
 	char file[MAXPATHLEN + 1];
 
-	if ((fd = open(config_path_r(file, filename), O_CREAT | O_RDWR)) == -1)
+	if ((fd = open(config_path_r(file, filename),
+		O_CREAT | O_RDWR, 0644)) == -1)
 		FAILTEMP("open %s: %s\n", file, strerror(errno));
 	ftruncate(fd, truncsize);
 	if ((res = mmap(0, truncsize, PROT_READ | PROT_WRITE,
@@ -131,27 +149,146 @@ mmap_file(char *filename, off_t truncsize)
 	return (res);
 }
 
+static inline void
+block_storage_names_fill(char *blockname, char *idxname, size_t idx,
+	size_t size)
+{
+	if (snprintf(blockname, size, "blocks/blocks%ld.bin", idx) >= size - 1)
+		FAILTEMP("path overflow: %s", blockname);
+	if (snprintf(idxname, size, "blocks/blocks%ld.idx", idx) >= size - 1)
+		FAILTEMP("path overflow: %s", idxname);
+}
+
+static int
+block_storage_exists(small_idx_t idx)
+{
+	char bpath[MAXPATHLEN + 1];
+	char ipath[MAXPATHLEN + 1];
+	char bpart[32];
+	char ipart[32];
+
+	block_storage_names_fill(bpart, ipart, idx, 32);
+	config_path_r(bpath, bpart);
+	config_path_r(ipath, ipart);
+
+	return (access(bpath, R_OK | W_OK) == 0 &&
+		access(ipath, R_OK | W_OK) == 0);
+}
+
+static block_storage_t *
+block_storage_load_storage(small_idx_t idx, big_idx_t first_block_idx)
+{
+	block_storage_t *res;
+	small_idx_t i, n;
+	char bpath[32];
+	char ipath[32];
+
+	block_storage_names_fill(bpath, ipath, idx, 32);
+
+	res = calloc(1, sizeof(block_storage_t));
+	res->first_block_idx = first_block_idx;
+
+	if (!(res->blocks = mmap_file(bpath, BLOCKS_FILESIZE_MAX)))
+		FAILTEMP("block_storage_load: %s: %s", bpath, strerror(errno));
+	if (!(res->block_idxs = mmap_file(ipath, BLOCK_IDX_FILESIZE_MAX)))
+		FAILTEMP("block_storage_load: %s: %s", bpath, strerror(errno));
+
+	n = BLOCK_IDX_FILESIZE_MAX / sizeof(big_idx_t);
+	i = 0;
+	if (res->block_idxs[1]) {
+		for (i = 1; i < n; i++) {
+			if (!res->block_idxs[i]) {
+				i--;
+				break;
+			}
+			if (res->block_idxs[n - i]) {
+				i = n - i;
+				break;
+			}
+		}
+	}
+
+	res->last_block_idx = first_block_idx + i;
+
+	return (res);
+}
+
+static void
+block_storage_list_resize(void)
+{
+	size_t sz, curr;
+
+	sz = sizeof(block_storage_t *);
+	curr = __num_block_storages;
+	__num_block_storages = curr + 10;
+	__block_storage = realloc(__block_storage, sz * __num_block_storages);
+	bzero(__block_storage + curr, sz * 10);
+}
+
+static block_storage_t *
+block_storage_create(void)
+{
+	block_storage_t *res;
+	big_idx_t fbi;
+	size_t i;
+
+	for (i = 0; i < __num_block_storages; i++)
+		if (!__block_storage[i])
+			break;
+
+	if (i == __num_block_storages)
+		block_storage_list_resize();
+
+	fbi = block_idx_last() + 1;
+	res = block_storage_load_storage(i, fbi);
+	__block_storage[i] = res;
+
+	return (res);
+}
+
+static void
+blockchain_storage_load(void)
+{
+	big_idx_t fbi;
+	block_storage_t *cb, *pb;
+
+	__num_block_storages = 10;
+	__block_storage = calloc(1,
+		sizeof(block_storage_t *) * __num_block_storages);
+
+	pb = NULL;
+	for (size_t i = 0, fbi = 0; block_storage_exists(i); i++) {
+		if (i == __num_block_storages)
+			block_storage_list_resize();
+		cb = block_storage_load_storage(i, fbi);
+		__block_storage[i] = cb;
+		__block_storage_current = cb;
+
+		fbi = cb->last_block_idx + 1;
+	}
+}
+
 void
 blockchain_load(void)
 {
-	size_t sz;
-
-	sz = BLOCKS_FILESIZE_MAX;
-	__blocks = mmap_file("blocks/blocks0.bin", sz);
-	__block_idxs = mmap_file("blocks/blocks0.idx", (sz * 8) / 256);
-	__last_block_idx = mmap_file("blocks/lastblock.idx", sizeof(big_idx_t));
+	blockchain_storage_load();
 }
 
 static void *
 raw_block_last_load(size_t *blocksize)
 {
 	big_idx_t last_offset;
+	raw_block_t *rb;
+	big_idx_t lbi;
 
-	last_offset = __block_idxs[block_idx_last()];
+	lbi = __block_storage_current->last_block_idx;
+	last_offset = __block_storage_current->block_idxs[lbi];
 
-	*blocksize = raw_block_size((raw_block_t *)(__blocks + last_offset), 0);
+	rb = (raw_block_t *)(__block_storage_current->blocks + last_offset);
+	if (blocksize)
+		*blocksize = raw_block_size(rb, 0);
 
-	return (__blocks + last_offset);
+	return (rb);
 }
 
 void
@@ -319,25 +456,30 @@ block_create(void)
 }
 
 raw_block_t *
-block_load(big_idx_t block_index, size_t *size)
+block_load(big_idx_t block_idx, size_t *size)
 {
+	block_storage_t *bs;
 	raw_block_t *res;
 	big_idx_t soffset;
 	big_idx_t eoffset;
+	big_idx_t idx;
+	size_t i;
 
 	*size = 0;
 
-	if (block_index > block_idx_last())
+	if (block_idx > block_idx_last())
 		return (NULL);
 
-	soffset = __block_idxs[block_index];
-	if (block_index < block_idx_last())
-		eoffset = __block_idxs[block_index + 1];
-	else
-		eoffset = soffset + __raw_block_last_size;
+	for (i = 0; __block_storage[i]->last_block_idx < block_idx; i++) { }
+	bs = __block_storage[i];
+	while (bs->last_block_idx < block_idx)
+		bs++;
 
-	res = (raw_block_t *)(__blocks + soffset);
-	*size = eoffset - soffset;
+	idx = block_idx - bs->first_block_idx;
+	soffset = bs->block_idxs[idx];
+
+	res = (raw_block_t *)(bs->blocks + soffset);
+	*size = raw_block_size(res, 0);
 
 	return (res);
 }
@@ -345,8 +487,10 @@ block_load(big_idx_t block_index, size_t *size)
 static void
 raw_block_write(raw_block_t *raw_block, size_t blocksize)
 {
-	size_t bsize;
-	char *dst;
+	block_storage_t *bs;
+	size_t bsize, isize;
+	big_idx_t idx;
+	void *dst;
 
 	if (config_is_caches_only()) {
 		if (__raw_block_last)
@@ -357,19 +501,26 @@ raw_block_write(raw_block_t *raw_block, size_t blocksize)
 		return;
 	}
 
-	bsize = (char *)__raw_block_last - __blocks + __raw_block_last_size;
+	bs = __block_storage_current;
+	dst = (void *)__raw_block_last + __raw_block_last_size;
+	if (dst + blocksize > bs->blocks + BLOCKS_FILESIZE_MAX) {
+		bs = block_storage_create();
+		__block_storage_current = bs;
+		dst = bs->blocks;
+	} else
+		bs->last_block_idx++;
 
-	dst = (char *)__raw_block_last + __raw_block_last_size;
 	bcopy(raw_block, dst, blocksize);
 	__raw_block_last = (raw_block_t *)dst;
 	__raw_block_last_size = blocksize;
 
-	*__last_block_idx = block_idx(__raw_block_last);
-	__block_idxs[block_idx_last()] = (char *)__raw_block_last - __blocks;
+	idx = block_idx(raw_block) - bs->first_block_idx;
+	bs->block_idxs[idx] = (void *)__raw_block_last - bs->blocks;
 
-	msync(__blocks, bsize, MS_SYNC);
-	msync(__block_idxs, block_idx_last() * sizeof(big_idx_t), MS_SYNC);
-	msync(__last_block_idx, sizeof(big_idx_t), MS_SYNC);
+	bsize = bs->block_idxs[idx] + blocksize;
+	isize = idx * sizeof(big_idx_t);
+	msync(bs->blocks, bsize, MS_SYNC);
+	msync(bs->block_idxs, isize, MS_SYNC);
 }
 
 void
@@ -447,13 +598,10 @@ block_denounce_timeout_fill(raw_block_timeout_t *rt)
 		if (!pubkey_equals(self, prev))
 			continue;
 
-lprintf("will denounce for slot %d", i);
 		raw_block_sign((raw_block_t *)rt, signsize, rt->signature[i]);
 		res++;
 	}
-raw_block_timeout_fprint(log_file(), rt);
 
-lprintf("block_denounce_timeout_fill: returns %d", res);
 	return (res);
 }
 
@@ -601,6 +749,11 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	if (blocksize != size) {
 		lprintf("block with index %ju has illegal size: %d vs %d",
 			block_idx(raw_block), size, blocksize);
+		return (FALSE);
+	}
+
+	if (block_idx(raw_block) <= block_idx_last()) {
+		// check with our blockchain and possibly take some action
 		return (FALSE);
 	}
 
@@ -818,6 +971,7 @@ void
 raw_block_process(raw_block_t *raw_block, size_t blocksize)
 {
 	raw_pact_t *t;
+	raw_block_t *fb;
 	size_t size;
 
 	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
@@ -844,6 +998,11 @@ raw_block_process(raw_block_t *raw_block, size_t blocksize)
 		__getblocks_target_idx = 0;
 
 	notar_elect_next();
+
+	if ((fb = raw_block_future_get(block_idx_last() + 1))) {
+		raw_block_process(fb, raw_block_size(fb, 0));
+		raw_block_future_free(fb);
+	}
 }
 
 void
@@ -1197,10 +1356,8 @@ getblocks(big_idx_t target_idx)
 		__getblocks_target_idx = target_idx;
 
 	cur_idx = block_idx_last();
-	if (cur_idx < __getblocks_target_idx) {
-		cur_idx++;
-		return getblock(cur_idx);
-	}
+	if (cur_idx < __getblocks_target_idx)
+		return getblock(cur_idx + 1);
 
 	__getblocks_target_idx = 0;
 
@@ -1220,13 +1377,28 @@ getblocks(big_idx_t target_idx)
 int
 blocks_remove(void)
 {
-	int r[3];
+	struct dirent *dire;
+	char name[32];
+	DIR *dirp;
+	int r;
 
-	r[0] = config_unlink("blocks/blocks0.bin");
-	r[1] = config_unlink("blocks/blocks0.idx");
-	r[2] = config_unlink("blocks/lastblock.idx");
+	r = 1;
+	if ((dirp = opendir(config_path("blocks")))) {
+		for (; (dire = readdir(dirp));) {
+			name[0] = '\0';
+			if (strcmp(dire->d_name, "lastblock.idx") == 0)
+				snprintf(name, 32, "blocks/%s", dire->d_name);
+			if (strncmp(dire->d_name, "blocks", 6) == 0)
+				snprintf(name, 32, "blocks/%s", dire->d_name);
 
-	return (r[0] && r[1] && r[2]);
+			if (name[0])
+				if (!config_unlink(name))
+					r = 0;
+		}
+		closedir(dirp);
+	}
+
+	return (r);
 }
 
 static void
@@ -1248,7 +1420,8 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 
 	t = time(NULL);
 
-	if (!blockchain_is_updating()) {
+	if (!blockchain_is_updating() && !notar_should_generate_block()) {
+		block_transit_messages_cleanup();
 		last = block_time(__raw_block_last);
 		if (t > last + 2) {
 			lprintf("no blocks seen in the last 2 seconds, "
@@ -1274,4 +1447,101 @@ block_poll_start(void)
 
 	__block_poll_timer = timer_set(BLOCK_POLL_INTERVAL_USECONDS,
 		__block_poll_tick, NULL);
+}
+
+int
+block_idx_in_transit(big_idx_t idx_be)
+{
+	int n;
+
+	n = 0;
+	for (small_idx_t i = 0; i < BLOCK_TRANSIT_MESSAGES_MAX; i++)
+		if (__block_transit_messages[i])
+			if (__block_transit_messages[i]->userinfo == idx_be)
+				n++;
+
+	return (n >= 2);
+}
+
+void
+block_transit_message_add(message_t *msg)
+{
+	for (small_idx_t i = 0; i < BLOCK_TRANSIT_MESSAGES_MAX; i++) {
+		if (!__block_transit_messages[i]) {
+			__block_transit_messages[i] = msg;
+			return;
+		}
+	}
+}
+
+void
+block_transit_message_remove(message_t *msg)
+{
+	for (small_idx_t i = 0; i < BLOCK_TRANSIT_MESSAGES_MAX; i++)
+		if (__block_transit_messages[i] == msg)
+			__block_transit_messages[i] = NULL;
+}
+
+static void
+block_transit_messages_cleanup(void)
+{
+	for (small_idx_t i = 0; i < BLOCK_TRANSIT_MESSAGES_MAX; i++)
+		__block_transit_messages[i] = NULL;
+}
+
+int
+raw_block_future_buffer_add(raw_block_t *rb, size_t size)
+{
+	small_idx_t i;
+
+	if (raw_block_size(rb, size) != size)
+		return (FALSE);
+
+	if ((block_idx(rb) > block_idx_last() + 20) ||
+		(block_idx(rb) <= block_idx_last() + 1))
+		return (FALSE);
+
+	for (i = 0; i < BLOCK_FUTURE_BUFFERS_MAX; i++)
+		if (!__block_future_buffer[i])
+			break;
+
+	if (i == BLOCK_FUTURE_BUFFERS_MAX)
+		return (FALSE);
+
+	__block_future_buffer[i] = rb;
+
+	return (TRUE);
+}
+
+static raw_block_t *
+raw_block_future_get(big_idx_t idx)
+{
+	big_idx_t idx_be;
+
+	idx_be = htobe64(idx);
+	for (small_idx_t i = 0; i < BLOCK_FUTURE_BUFFERS_MAX; i++)
+		if (__block_future_buffer[i])
+			if (__block_future_buffer[i]->index == idx_be)
+				return (__block_future_buffer[i]);
+
+	return (NULL);
+}
+
+static void
+raw_block_future_free(raw_block_t *rb)
+{
+	big_idx_t last_be;
+
+	last_be = __raw_block_last->index;
+	for (small_idx_t i = 0; i < BLOCK_FUTURE_BUFFERS_MAX; i++) {
+		if (__block_future_buffer[i]->index <= last_be) {
+			__block_future_buffer[i] = NULL;
+			free(__block_future_buffer[i]);
+		}
+
+		if (__block_future_buffer[i] == rb)
+			__block_future_buffer[i] = NULL;
+	}
+
+	free(rb);
 }

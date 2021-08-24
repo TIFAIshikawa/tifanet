@@ -67,12 +67,12 @@ extern void *keypair_verify_start(void *payload, size_t size);
 extern void keypair_verify_update(void *context, void *payload, size_t size);
 extern int keypair_verify_finalize(void *context, void *public_key, void *signature);
 
-extern int pubkey_compare(void *l, void *r);
-extern int pubkey_equals(void *l, void *r);
-extern int hash_compare(void *l, void *r);
-extern int hash_equals(void *l, void *r);
-extern int signature_compare(void *l, void *r);
-extern int signature_equals(void *l, void *r);
+extern int pubkey_compare(const public_key_t l, const public_key_t r);
+extern int pubkey_equals(const public_key_t l, const public_key_t r);
+extern int hash_compare(const void *l, const void *r);
+extern int hash_equals(const void *l, const void *r);
+extern int signature_compare(const void *l, const void *r);
+extern int signature_equals(const void *l, const void *r);
 
 extern char *small_hash_str(small_hash_t h);
 extern char *small_hash_str_r(small_hash_t h, char *tmp);

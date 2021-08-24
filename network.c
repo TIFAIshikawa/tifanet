@@ -36,6 +36,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <sodium.h>
+#include <ifaddrs.h>
 #include <sys/param.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
@@ -271,6 +272,9 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 	char c;
 
 	nev = info->payload;
+	msg = network_message(info);
+
+	block_transit_message_remove(msg);
 
 	if (!nev->read_idx && !nev->write_idx) {
 		len = sizeof(struct sockaddr_storage);
@@ -292,7 +296,6 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 	if (!nev->userdata)
 		return;
 
-	msg = network_message(info);
 	opcode = msg->opcode;
 	if ((nev->type == NETWORK_EVENT_TYPE_SERVER && opcode == OP_GETBLOCK) ||
 		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_BLOCKANNOUNCE) ||

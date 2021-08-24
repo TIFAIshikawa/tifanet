@@ -415,12 +415,17 @@ void
 op_getblock_client(event_info_t *info, network_event_t *nev)
 {
 	message_t *msg;
+	size_t size;
 
 	msg = network_message(info);
 
-	if (raw_block_validate(nev->userdata, be32toh(msg->payload_size))) {
+	size = be32toh(msg->payload_size);
+	if (raw_block_validate(nev->userdata, size)) {
 		lprintf("received block %ju", block_idx(nev->userdata));
 		raw_block_process(nev->userdata, be32toh(msg->payload_size));
+	} else {
+		if (raw_block_future_buffer_add(nev->userdata, size))
+			nev->userdata = NULL;
 	}
 
 	message_cancel(info);
@@ -460,8 +465,9 @@ op_blockannounce(event_info_t *info)
 	lprintf("received block %ju", index);
 
 	msg = network_message(info);
+	size = be32toh(msg->payload_size);
 
-	if (raw_block_validate(nev->userdata, be32toh(msg->payload_size))) {
+	if (raw_block_validate(nev->userdata, size)) {
 		raw_block_process(nev->userdata, nev->read_idx);
 
 		// get block from block storage (which is permanent, whereas
@@ -470,6 +476,9 @@ op_blockannounce(event_info_t *info)
 		if (block)
         		message_broadcast(OP_BLOCKANNOUNCE, block, size,
 				htobe64(index));
+	} else {
+		if (raw_block_future_buffer_add(nev->userdata, size))
+			nev->userdata = NULL;
 	}
 
 	message_cancel(info);
@@ -482,7 +491,9 @@ op_blockannounce_ignore(event_info_t *info)
 	int res;
 
 	msg = network_message(info);
-	res = block_exists(be64toh(msg->userinfo));
+	if (!(res = block_exists(be64toh(msg->userinfo))))
+		if (!(res = block_idx_in_transit(msg->userinfo)))
+			block_transit_message_add(msg);
 
 	return (res);
 }

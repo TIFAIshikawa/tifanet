@@ -30,7 +30,6 @@
 #ifndef __TIFA_PEERLIST_H
 #define __TIFA_PEERLIST_H
 
-#include <ifaddrs.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include "config.h"
@@ -48,6 +47,7 @@ extern peerlist_t peerlist;
 
 extern void peerlist_load(void);
 extern void peerlist_save(void);
+extern void peerlist_save_sync(void);
 
 extern void peerlist_add(struct sockaddr_storage *addr);
 extern void peerlist_add_ipv4(struct in_addr addr);

@@ -62,7 +62,7 @@ save_state(int signal)
 		rxcache_save(idx);
 		notarscache_save(idx);
 	}
-	peerlist_save();
+	peerlist_save_sync();
 	exit(0);
 }
 
