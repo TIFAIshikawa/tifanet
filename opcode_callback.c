@@ -355,7 +355,7 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 	blockinfo = nev->userdata;
 	rmt_idx = be64toh(blockinfo->index);
 
-	lprintf("last block is #%ju (our last is %ju)", rmt_idx, lcl_idx);
+	lprintf("last block is %ju (our last is %ju)", rmt_idx, lcl_idx);
 
 	if (lcl_idx < rmt_idx) {
 		getblocks(rmt_idx);
@@ -394,7 +394,8 @@ op_getblock_server(event_info_t *info, network_event_t *nev)
 	size_t size;
 
 	msg = network_message(info);
-	if (!(block = block_load(be64toh(msg->userinfo), &size))) {
+	if (!(block = blocks_load(be64toh(msg->userinfo), &size, 5000,
+		MAXPACKETSIZE))) {
 		message_cancel(info);
 		return;
 	}
@@ -414,18 +415,38 @@ op_getblock_server(event_info_t *info, network_event_t *nev)
 void
 op_getblock_client(event_info_t *info, network_event_t *nev)
 {
+	size_t size, bufsize;
 	message_t *msg;
-	size_t size;
+	void *block;
 
 	msg = network_message(info);
 
-	size = be32toh(msg->payload_size);
-	if (raw_block_validate(nev->userdata, size)) {
-		lprintf("received block %ju", block_idx(nev->userdata));
-		raw_block_process(nev->userdata, be32toh(msg->payload_size));
-	} else {
-		if (raw_block_future_buffer_add(nev->userdata, size))
-			nev->userdata = NULL;
+	block = nev->userdata;
+	bufsize = be32toh(msg->payload_size);
+
+	for (; bufsize > 0;) {
+        	// check block size
+		if (bufsize < sizeof(raw_block_t) + sizeof(raw_pact_t) +
+			sizeof(pact_rx_t)) {
+			lprintf("incoming block is smaller than block "
+				"skeleton: %d", bufsize);
+			break;
+		}
+
+		size = raw_block_size(block, bufsize);
+		if (size > bufsize) {
+			lprintf("incoming block is larger than incoming data",
+				": %d vs %d", size, bufsize);
+			break;
+		}
+		if (!raw_block_validate(block, size))
+			break;
+
+		lprintf("received block %ju", block_idx(block));
+		raw_block_process(nev->userdata, size);
+
+		block += size;
+		bufsize -= size;
 	}
 
 	message_cancel(info);

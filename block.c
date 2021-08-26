@@ -438,6 +438,13 @@ block_create(void)
 raw_block_t *
 block_load(big_idx_t block_idx, size_t *size)
 {
+	return (blocks_load(block_idx, size, 1, MAXPACKETSIZE));
+}
+
+raw_block_t *
+blocks_load(big_idx_t block_idx, size_t *size, big_idx_t max_blocks,
+	size_t max_size)
+{
 	block_storage_t *bs;
 	raw_block_t *res;
 	big_idx_t soffset;
