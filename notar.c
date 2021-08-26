@@ -78,10 +78,10 @@ notars_last_block_idx(void)
 	return (__notars_last_block_idx);
 }
 
-public_key_t *
+uint8_t *
 notar_next(void)
 {
-	return (&__notars[__next_notar_idx]);
+	return ((uint8_t *)&__notars[__next_notar_idx]);
 }
 
 public_key_t *
@@ -100,7 +100,8 @@ node_is_notar(void)
 int
 notar_should_generate_block(void)
 {
-	return (pubkey_equals(__notars[__next_notar_idx], node_public_key()));
+	return (config_is_notar_node() && __is_notar &&
+		pubkey_equals(__notars[__next_notar_idx], node_public_key()));
 }
 
 static void
@@ -148,7 +149,6 @@ notar_exists(public_key_t notar)
 static void
 notar_add(public_key_t new_notar)
 {
-	node_name_t node_name;
 	big_idx_t ia = 0;
 	int cr;
 
@@ -161,7 +161,7 @@ notar_add(public_key_t new_notar)
 			ia = i;
 		else if (cr == 0) {
 			lprintf("notar_add: attempted to add existing notar %s",
-				public_key_node_name(new_notar, node_name));
+				public_key_node_name(new_notar));
 			return;
 		}
 	}
@@ -257,17 +257,15 @@ notar_elect_raw_block(big_idx_t raw_block_idx)
 void
 notar_elect_next(void)
 {
-	node_name_t name;
-
 	__next_notar_idx = notar_elect_raw_block(block_idx_last());
 
 	lprintf("block(%ju) = %s (%d)", block_idx_last() + 1,
-		public_key_node_name(__notars[__next_notar_idx], name),
+		public_key_node_name(__notars[__next_notar_idx]),
 		__next_notar_idx);
 
 #ifdef DEBUG_NOTAR
 	for (big_idx_t i = 0; i < __notars_count; i++)
-		lprintf("%ld: %s", i, public_key_node_name(__notars[i], name));
+		lprintf("%ld: %s", i, public_key_node_name(__notars[i]));
 	lprintf("-----");
 #endif
 
@@ -465,7 +463,6 @@ notar_pending_exists(public_key_t notar)
 void
 notar_pending_add(public_key_t new_notar)
 {
-	node_name_t notarname;
 	small_idx_t idx;
 
 	if (__pending_notars_count >= PENDING_NOTARS_MAX)
@@ -481,8 +478,7 @@ notar_pending_add(public_key_t new_notar)
 	bcopy(new_notar, __pending_notars[idx], sizeof(public_key_t));
 	__pending_notars_count++;
 
-	public_key_node_name(new_notar, notarname);
-	lprintf("adding pending notar: %s", notarname);
+	lprintf("adding pending notar: %s", public_key_node_name(new_notar));
 }
 
 static void
@@ -516,7 +512,7 @@ notar_pending_next(void)
 		if (__pending_notars_base == __pending_notars_size)
 			__pending_notars_base = 0;
 
-		if (!pubkey_equals(res, (void *)pubkey_zero))
+		if (!pubkey_is_zero(res))
 			return (res);
 	}
 

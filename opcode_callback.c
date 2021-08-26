@@ -532,7 +532,6 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 	message_t *msg;
 	raw_pact_t *p;
 	small_idx_t sz;
-	raw_pact_t **ps;
 	op_pact_response_t *response;
 
 	msg = network_message(info);
@@ -579,7 +578,7 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 	info->callback = message_write;
 	message_write(info, EVENT_WRITE);
 
-	ps = pacts_pending(&sz);
+	pacts_pending(&sz);
 	if (sz >= 2 && notar_should_generate_block())
 		block_generate_next();
 

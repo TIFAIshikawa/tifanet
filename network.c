@@ -92,10 +92,17 @@ static void
 socket_set_timeout(int fd, unsigned int sec_timeout)
 {
 	int timeout;
+	struct timeval timeout_tv;
 
 	timeout = sec_timeout * 1000;
-
 	setsockopt(fd, 6, 18, &timeout, sizeof(timeout));
+
+	timeout_tv.tv_sec = sec_timeout;
+	timeout_tv.tv_usec = 0;
+	setsockopt(fd, SOL_SOCKET,SO_RCVTIMEO, (void *)&timeout_tv,
+		sizeof(timeout_tv));
+	setsockopt(fd, SOL_SOCKET,SO_SNDTIMEO, (void *)&timeout_tv,
+		sizeof(timeout_tv));
 }
 
 char *
@@ -697,7 +704,7 @@ is_nonroutable_address(struct sockaddr_storage *addr)
 	struct sockaddr_in *a4;
 	uint32_t a4h;
 	uint8_t *a4digits;
-	struct sockaddr_in6 *a6;
+	//struct sockaddr_in6 *a6;
 
 	// These checks are all quite rudimentary. The point is to ignore
 	// e.g. obvious RFC1918 and RFC5771 addresses, since peers need to
@@ -723,7 +730,7 @@ is_nonroutable_address(struct sockaddr_storage *addr)
 			return (TRUE);
 		break;
 	case AF_INET6:
-		a6 = (struct sockaddr_in6 *)addr;
+		//a6 = (struct sockaddr_in6 *)addr;
 		break;
 	}
 

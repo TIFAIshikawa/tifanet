@@ -51,7 +51,8 @@ extern keypair_t *node_keypair(void);
 extern void *node_public_key(void);
 extern char *node_name(void);
 
-extern char *public_key_node_name(public_key_t public_key, node_name_t name);
+extern char *public_key_node_name(public_key_t public_key);
+extern char *public_key_node_name_r(public_key_t public_key, node_name_t name);
 
 extern int is_node(const char *name);
 

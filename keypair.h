@@ -69,10 +69,12 @@ extern int keypair_verify_finalize(void *context, void *public_key, void *signat
 
 extern int pubkey_compare(const public_key_t l, const public_key_t r);
 extern int pubkey_equals(const public_key_t l, const public_key_t r);
+extern int pubkey_is_zero(const public_key_t pubkey);
 extern int hash_compare(const void *l, const void *r);
 extern int hash_equals(const void *l, const void *r);
 extern int signature_compare(const void *l, const void *r);
 extern int signature_equals(const void *l, const void *r);
+extern int signature_is_zero(const void *signature);
 
 extern char *small_hash_str(small_hash_t h);
 extern char *small_hash_str_r(small_hash_t h, char *tmp);

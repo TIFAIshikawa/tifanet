@@ -96,10 +96,12 @@ extern raw_block_t *block_load(big_idx_t idx, size_t *size);
 
 extern void block_last_load(void);
 
-extern void block_pacts_add(block_t *block, pact_t **pacts, small_idx_t num_pacts);
+extern void block_pacts_add(block_t *block, pact_t **pacts,
+	small_idx_t num_pacts);
 extern void block_pact_add(block_t *block, pact_t *pact);
 
-extern uint8_t *public_key_find_by_rx_idx(raw_block_t *block, small_idx_t rx_idx);
+extern uint8_t *public_key_find_by_rx_idx(raw_block_t *block,
+	small_idx_t rx_idx);
 
 extern void raw_block_hash(raw_block_t *block, size_t size, hash_t result);
 

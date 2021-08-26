@@ -121,7 +121,6 @@ pact_finalize(pact_t *pact)
 	address_t *addr;
 	small_idx_t rxidx;
 	keypair_t *addr_kp;
-	address_name_t addr_name;
 
 	for (small_idx_t i = 0; i < pact->num_rx; i++) {
 		rx = pact->rx[i];
@@ -140,8 +139,7 @@ pact_finalize(pact_t *pact)
 		if (!(addr = address_find_by_public_key(rxc->rx.address)))
 			FAIL(EX_SOFTWARE, "finalize_pact: address "
 			     "not found for public key: %s\n",
-			     public_key_address_name(rxc->rx.address,
-				addr_name));
+			     public_key_address_name(rxc->rx.address));
 		addr_kp = address_keypair(addr);
 
 		keypair_sign_start(addr_kp, NULL, 0);
@@ -293,11 +291,9 @@ pact_pending_remove(raw_pact_t *t)
 	raw_pact_t *pt;
 	int remove;
 
-int q = 0;
 	for (small_idx_t i = 0; i < __pending_pacts_size; i++) {
 		if (!(pt = __pending_pacts[i]))
 			continue;
-q++;
 
 		remove = 0;
 
@@ -323,7 +319,6 @@ q++;
 			free(pt);
 		}
 	}
-if (q) lprintf("PENDINGPACTS: %d", q);
 }
 
 int

@@ -64,7 +64,15 @@ node_checksum(char *ident, char *buffer)
 }
 
 char *
-public_key_node_name(public_key_t public_key, node_name_t name)
+public_key_node_name(public_key_t public_key)
+{
+	static node_name_t node_name;
+
+	return (public_key_node_name_r(public_key, node_name));
+}
+
+char *
+public_key_node_name_r(public_key_t public_key, node_name_t name)
 {
 	char ident[KEYPAIR_NAME_LENGTH + 1];
 	char prepend_chksum[strlen(TIFA_NODE_IDENT) + 1];

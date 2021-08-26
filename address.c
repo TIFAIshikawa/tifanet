@@ -73,7 +73,15 @@ address_checksum(char *ident, char *buffer)
 }
 
 char *
-public_key_address_name(public_key_t public_key, address_name_t name)
+public_key_address_name(public_key_t public_key)
+{
+	static address_name_t name;
+
+	return (public_key_address_name_r(public_key, name));
+}
+
+char *
+public_key_address_name_r(public_key_t public_key, address_name_t name)
 {
 	char ident[KEYPAIR_NAME_LENGTH + 1];
 	char prepend_chksum[strlen(TIFA_IDENT) + 1];

@@ -50,7 +50,9 @@ extern void address_save(address_t *address, const char *path);
 
 extern int is_address(const char *ident);
 
-extern char *public_key_address_name(public_key_t public_key, address_name_t name);
+extern char *public_key_address_name(public_key_t public_key);
+extern char *public_key_address_name_r(public_key_t public_key,
+		address_name_t name);
 extern char *address_name(address_t *address);
 extern uint8_t *address_public_key(address_t *address);
 

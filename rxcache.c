@@ -135,7 +135,7 @@ rxcaches_for_address(address_t *address, size_t *amount)
 {
 	rxcache_t **res = NULL;
 	size_t count = 0;
-	public_key_t *pk;
+	uint8_t *pk;
 	rxcache_t item;
 
 	pk = (void *)address_public_key(address);

@@ -92,7 +92,7 @@ int
 main(int argc, char *argv[])
 {
 	int should_fork = 1;
-	int ch, pid, fd;
+	int ch, fd;
 
 	while ((ch = getopt(argc, argv, "fhnsSc")) != -1) {
 		switch (ch) {
@@ -164,7 +164,7 @@ main(int argc, char *argv[])
 	signal(SIGINT, save_state);
 
 	if (should_fork) {
-		if ((pid = fork())) {
+		if (fork()) {
 			return (0);
 		} else {
 			setsid();

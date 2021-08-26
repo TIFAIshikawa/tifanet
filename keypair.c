@@ -223,6 +223,12 @@ pubkey_equals(const public_key_t l, const public_key_t r)
 }
 
 int
+pubkey_is_zero(const public_key_t pubkey)
+{
+	return (pubkey_equals(pubkey_zero, pubkey));
+}
+
+int
 hash_compare(const void *l, const void *r)
 {
 	return (memcmp(l, r, sizeof(hash_t)));
@@ -244,6 +250,12 @@ int
 signature_equals(const void *l, const void *r)
 {
 	return (signature_compare(l, r) == 0);
+}
+
+int
+signature_is_zero(const void *signature)
+{
+	return (signature_equals(signature_zero, signature));
 }
 
 char *
