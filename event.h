@@ -47,6 +47,7 @@ typedef enum {
 struct __event_info;
 typedef struct __event_info event_info_t;
 typedef void (*event_callback_t)(event_info_t *info, event_flags_t eventflags);
+typedef int (*event_timeout_check_t)(event_info_t *info, time64_t timeout);
 
 struct __event_info {
 	uint64_t ident;
@@ -54,6 +55,7 @@ struct __event_info {
 	time64_t time;
 	event_callback_t callback;
 	event_callback_t on_close;
+	event_timeout_check_t timeout_check;
 	void *payload;
 };
 

@@ -448,8 +448,10 @@ blocks_load(big_idx_t block_idx, size_t *size, big_idx_t max_blocks,
 	block_storage_t *bs;
 	raw_block_t *res;
 	big_idx_t soffset;
+	big_idx_t boffset;
 	big_idx_t idx;
-	size_t i;
+	size_t sz, i;
+	size_t mb;
 
 	*size = 0;
 
@@ -457,17 +459,22 @@ blocks_load(big_idx_t block_idx, size_t *size, big_idx_t max_blocks,
 		return (NULL);
 
 	for (i = 0; __block_storage[i]->last_block_idx < block_idx; i++) { }
-
 	bs = __block_storage[i];
-	while (bs->last_block_idx < block_idx)
-		bs++;
 
 	idx = block_idx - bs->first_block_idx;
 	soffset = bs->block_idxs[idx];
 
 	res = (raw_block_t *)(bs->blocks + soffset);
-	*size = raw_block_size(res, 0);
+	sz = raw_block_size(res, 0);
+	mb = MIN(bs->last_block_idx, block_idx + max_blocks);
+	for (big_idx_t b = 1; block_idx + b < mb; b++) {
+		boffset = bs->block_idxs[idx + b];
+		if (boffset - soffset > max_size)
+			break;
+		sz += raw_block_size((raw_block_t *)(bs->blocks + boffset), 0);
+	}
 
+	*size = sz;
 	return (res);
 }
 
@@ -1494,11 +1501,14 @@ raw_block_future_buffer_add(raw_block_t *rb, size_t size)
 {
 	small_idx_t i;
 
-	if (raw_block_size(rb, size) != size)
+	if (size < sizeof(raw_block_t) + sizeof(raw_pact_t) + sizeof(pact_rx_t))
 		return (FALSE);
 
 	if ((block_idx(rb) > block_idx_last() + 20) ||
 		(block_idx(rb) <= block_idx_last() + 1))
+		return (FALSE);
+
+	if (raw_block_size(rb, size) != size)
 		return (FALSE);
 
 	for (i = 0; i < BLOCK_FUTURE_BUFFERS_MAX; i++)

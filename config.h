@@ -87,6 +87,7 @@
 
 #define CACHE_HASH_BLOCK_INTERVAL 1000
 
+#define MINUTE_USECONDS 60000
 #define HOUR_USECONDS 3600000
 
 typedef uint32_t small_idx_t;

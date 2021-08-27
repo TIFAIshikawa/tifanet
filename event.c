@@ -51,7 +51,13 @@ static int __eventfd;
 #define NUM_EVENTS 128
 static event_info_t *__events_to_remove[NUM_EVENTS];
 
-static void add_info_to_remove(event_info_t *info);
+static event_info_t **__active_events;
+static size_t __active_events_size;
+
+static void __event_active_add(event_info_t *event);
+static void __event_active_remove(event_info_t *event);
+static void __event_active_check_timeout(void);
+static void __add_info_to_remove(event_info_t *info);
 
 void
 event_handler_init()
@@ -63,6 +69,61 @@ event_handler_init()
 #endif
 		FAIL(EX_TEMPFAIL, "init_event_handler: kqueue: ",
 				  strerror(errno));
+
+	__active_events_size = 100;
+	__active_events = calloc(1, sizeof(event_info_t *) *
+		__active_events_size);
+}
+
+static void
+__event_active_add(event_info_t *event)
+{
+	size_t prevsize, newsize, i;
+
+	for (i = 0; i < __active_events_size; i++)
+		if (!__active_events[i])
+			break;
+
+	if (i == __active_events_size) {
+		__active_events = realloc(__active_events,
+			sizeof(event_info_t *) * (__active_events_size + 100));
+		prevsize = sizeof(event_info_t *) * __active_events_size;
+		newsize = sizeof(event_info_t *) * 100;
+		bzero(__active_events + prevsize, newsize);
+		__active_events_size += 100;
+	}
+
+	__active_events[i] = event;
+}
+
+static void
+__event_active_remove(event_info_t *event)
+{
+	for (size_t i = 0; i < __active_events_size; i++)
+		if (__active_events[i] == event)
+			__active_events[i] = NULL;
+}
+
+static void
+__event_active_check_timeout(void)
+{
+	time64_t curtime, diff;
+	event_info_t *info;
+
+	curtime = time(NULL);
+	for (size_t i = 0; i < __active_events_size; i++) {
+		if (!(info = __active_events[i]))
+			continue;
+		diff = curtime - info->time;
+lprintf("? %p: diff=%ld", info, diff);
+		if (diff < 3)
+			continue;
+		if (info->timeout_check) {
+lprintf("CHECKALL %p: diff=%ld %d", info, diff, info->timeout_check(info, diff));
+			if (info->timeout_check(info, diff))
+				event_remove(info);
+}
+	}
 }
 
 static event_info_t *
@@ -100,6 +161,8 @@ event_add(int fd, event_flags_t eventflags, event_callback_t callback,
 
 	res = event_info_alloc(fd, callback, payload, payload_size);
 	res->flags = eventflags;
+
+	__event_active_add(res);
 
 #ifdef __linux__
 	struct epoll_event event;
@@ -260,7 +323,8 @@ event_remove(event_info_t *info)
 	if (info->on_close)
 		info->on_close(info, 0);
 	close(info->ident);
-	add_info_to_remove(info);
+	__add_info_to_remove(info);
+	__event_active_remove(info);
 }
 
 static void
@@ -306,7 +370,7 @@ timer_remove(event_info_t *info)
 }
 
 static void
-add_info_to_remove(event_info_t *info)
+__add_info_to_remove(event_info_t *info)
 {
 	for (size_t i = 0; i < NUM_EVENTS; i++) {
 		if (!__events_to_remove[i]) {
@@ -397,16 +461,19 @@ event_loop_start()
 	struct epoll_event events[NUM_EVENTS];
 #else
 #define MAX_EVENTS 128
+	struct timespec timeout;
 	struct kevent events[NUM_EVENTS];
 #endif
 
 	for(;;) {
 		bzero(__events_to_remove, sizeof(__events_to_remove));
 #ifdef __linux__
-		switch((n = epoll_wait(__eventfd, events, NUM_EVENTS, -1))) {
+		switch((n = epoll_wait(__eventfd, events, NUM_EVENTS, 1000))) {
 #else
+		timeout.tv_sec = 1;
+		timeout.tv_nsec = 0;
 		switch((n = kevent(__eventfd, NULL, 0, events, NUM_EVENTS,
-			NULL))) {
+			&timeout))) {
 #endif
 		case -1:
 			if (errno != EINTR)
@@ -428,4 +495,5 @@ event_loop_start()
 			break;
 		}
 	}
+	__event_active_check_timeout();
 }

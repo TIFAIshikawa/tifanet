@@ -228,7 +228,7 @@ peerlist_request_broadcast(void)
 
 	message_broadcast(OP_PEERLIST, NULL, 0, 0);
 
-	delay = randombytes_random() % HOUR_USECONDS;
+	delay = randombytes_random() % (HOUR_USECONDS / 3);
 	__peerlist_timer = timer_set(delay, __peerlist_request_tick, NULL);
 }
 

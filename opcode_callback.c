@@ -439,11 +439,13 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 				": %d vs %d", size, bufsize);
 			break;
 		}
-		if (!raw_block_validate(block, size))
-			break;
+		if (block_idx(block) == block_idx_last() + 1) {
+			if (!raw_block_validate(block, size))
+				break;
 
-		lprintf("received block %ju", block_idx(block));
-		raw_block_process(nev->userdata, size);
+			lprintf("received block %ju", block_idx(block));
+			raw_block_process(block, size);
+		}
 
 		block += size;
 		bufsize -= size;

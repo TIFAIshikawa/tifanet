@@ -59,9 +59,6 @@ static int __is_notar = FALSE;
 static big_idx_t __notars_last_block_idx = 0;
 
 static public_key_t *__pending_notars = NULL;
-static small_idx_t __pending_notars_base = 0;
-static small_idx_t __pending_notars_size = 0;
-static small_idx_t __pending_notars_count = 0;
 
 static event_info_t *__notar_timer = NULL;
 static event_info_t *__notar_announce_timer = NULL;
@@ -169,8 +166,7 @@ notar_add(public_key_t new_notar)
 	notar_pending_remove(new_notar);
 
 #ifdef DEBUG_NOTAR
-	public_key_node_name(new_notar, node_name);
-	lprintf("notar_add: adding %s", node_name);
+	lprintf("notar_add: adding %s", public_key_node_name(new_notar));
 #endif
 	if (__notars_size == __notars_count) {
 		__notars = realloc(__notars, sizeof(public_key_t) *
@@ -188,9 +184,6 @@ notar_add(public_key_t new_notar)
 static void
 notar_remove(public_key_t remove_notar)
 {
-#ifdef DEBUG_NOTAR
-	node_name_t node_name;
-#endif
 	big_idx_t i;
 
 	for (i = 0; i < __notars_count; i++)
@@ -204,8 +197,8 @@ notar_remove(public_key_t remove_notar)
 		__is_notar = FALSE;
 
 #ifdef DEBUG_NOTAR
-	public_key_node_name(remove_notar, node_name);
-	lprintf("notar_remove: removing %s", node_name);
+	lprintf("notar_remove: removing %s",
+		public_key_node_name(remove_notar));
 #endif
 	__notars_count--;
 	for (; i < __notars_count; i++)
@@ -440,7 +433,6 @@ notarscache_load(void)
 		return;
 
 	__pending_notars = calloc(1, sizeof(public_key_t) * PENDING_NOTARS_MAX);
-	__pending_notars_size = PENDING_NOTARS_MAX;
 
 	if (!(f = config_fopen("blocks/notarscache.bin", "r"))) {
 		notarscache_create();
@@ -463,60 +455,52 @@ notar_pending_exists(public_key_t notar)
 void
 notar_pending_add(public_key_t new_notar)
 {
-	small_idx_t idx;
-
-	if (__pending_notars_count >= PENDING_NOTARS_MAX)
+	if (pubkey_is_zero(new_notar))
 		return;
-
 	if (notar_pending_exists(new_notar))
 		return;
 
-	idx = __pending_notars_base + __pending_notars_count;
-	if (idx >= PENDING_NOTARS_MAX)
-		idx -= PENDING_NOTARS_MAX;
+	for (size_t i = 0; i < PENDING_NOTARS_MAX; i++) {
+		if (pubkey_is_zero(__pending_notars[i])) {
+			bcopy(new_notar, __pending_notars[i],
+				sizeof(public_key_t));
+			lprintf("adding pending notar: %s",
+				public_key_node_name(new_notar));
 
-	bcopy(new_notar, __pending_notars[idx], sizeof(public_key_t));
-	__pending_notars_count++;
-
-	lprintf("adding pending notar: %s", public_key_node_name(new_notar));
+			return;
+		}
+	}
 }
 
 static void
 notar_pending_remove(public_key_t remove_notar)
 {
-	void *n;
-
-	n = __pending_notars + __pending_notars_base;
-	if (pubkey_equals(remove_notar, n)) {
-		notar_pending_next();
+	if (pubkey_is_zero(remove_notar))
 		return;
-	}
 
-	for (size_t i = 0; i < PENDING_NOTARS_MAX; i++)
-		if (pubkey_equals(__pending_notars[i], remove_notar))
+	for (size_t i = 0; i < PENDING_NOTARS_MAX; i++) {
+		if (pubkey_equals(__pending_notars[i], remove_notar)) {
 			bzero(__pending_notars[i], sizeof(public_key_t));
+			for (size_t n = i + 1; n < PENDING_NOTARS_MAX; n++)
+				bcopy(__pending_notars[n],
+					__pending_notars[n - 1],
+					sizeof(public_key_t));
+			bzero(__pending_notars[PENDING_NOTARS_MAX - 1],
+				sizeof(public_key_t));
+		}
+	}
 }
 
 uint8_t *
 notar_pending_next(void)
 {
-	void *res;
+	size_t count;
 
-	if (__pending_notars_count == 0)
+	for (count = 0; !pubkey_is_zero(__pending_notars[count]); count++) { }
+	if (!count)
 		return (NULL);
 
-	for (; __pending_notars_count;) {
-		res = __pending_notars + __pending_notars_base;
-		__pending_notars_count--;
-		__pending_notars_base++;
-		if (__pending_notars_base == __pending_notars_size)
-			__pending_notars_base = 0;
-
-		if (!pubkey_is_zero(res))
-			return (res);
-	}
-
-	return (NULL);
+	return (__pending_notars[randombytes_random() % count]);
 }
 
 void

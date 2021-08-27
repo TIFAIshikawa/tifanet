@@ -72,6 +72,9 @@ static struct ifaddrs *__ifaddrs = NULL;
 
 static void accept_connection(event_info_t *, event_flags_t);
 static void message_event_on_close(event_info_t *, event_flags_t);
+static int message_event_timeout_check(event_info_t *, time64_t timeout);
+static int message_event_connect_timeout_check(event_info_t *,
+	time64_t timeout);
 
 static event_info_t *__listen_info_ipv4 = NULL;
 static event_info_t *__listen_info_ipv6 = NULL;
@@ -260,6 +263,7 @@ accept_connection(event_info_t *info, event_flags_t eventtype)
 	event = event_add(fd, EVENT_READ | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
 		message_read, &nev, sizeof(network_event_t));
 	event->on_close = message_event_on_close;
+	event->timeout_check = message_event_timeout_check;
 }
 
 void
@@ -323,6 +327,20 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 }
 
 static int
+message_event_timeout_check(event_info_t *info, time64_t timeout)
+{
+printf("CHECK %p", info);
+	return (timeout > 10);
+}
+
+static int
+message_event_connect_timeout_check(event_info_t *info, time64_t timeout)
+{
+printf("CHECKONNECT %p", info);
+	return (timeout > 2);
+}
+
+static int
 message_header_validate(event_info_t *info)
 {
 	network_event_t *nev;
@@ -374,6 +392,7 @@ message_read(event_info_t *info, event_flags_t eventtype)
 	if (eventtype & EVENT_WRITE)
 		return;
 
+	info->timeout_check = message_event_timeout_check;
 	nev = info->payload;
 	msg = &nev->message_header;
 	switch (nev->state) {
@@ -441,6 +460,7 @@ message_write(event_info_t *info, event_flags_t eventtype)
 	if (eventtype & EVENT_READ)
 		return;
 
+	info->timeout_check = message_event_timeout_check;
 	nev = info->payload;
 	msg = &nev->message_header;
 	switch (nev->state) {
@@ -535,9 +555,8 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 	res = event_add(fd, EVENT_WRITE | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
 			message_write, &nev, sizeof(network_event_t));
 	res->on_close = message_event_on_close;
+	res->timeout_check = message_event_connect_timeout_check;
 #ifdef DEBUG_ALLOC
-network_event_t *nv;
-nv = res->payload;
 	lprintf("+USERDATA %p REQUEST_SEND", nev.userdata);
 #endif
 
