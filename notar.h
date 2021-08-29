@@ -36,6 +36,7 @@
 
 extern big_idx_t notars_last_block_idx(void);
 extern public_key_t *notars(big_idx_t *num_notars);
+extern uint8_t *notar_prev(void);		// returned is a public_key_t
 extern uint8_t *notar_next(void);		// returned is a public_key_t
 extern int notar_exists(public_key_t notar);
 

@@ -54,6 +54,7 @@
 static public_key_t *__notars = NULL;
 static big_idx_t __notars_size = 0;
 static big_idx_t __notars_count = 0;
+static big_idx_t __prev_notar_idx = 0;
 static big_idx_t __next_notar_idx = 0;
 static int __is_notar = FALSE;
 static big_idx_t __notars_last_block_idx = 0;
@@ -73,6 +74,12 @@ big_idx_t
 notars_last_block_idx(void)
 {
 	return (__notars_last_block_idx);
+}
+
+uint8_t *
+notar_prev(void)
+{
+	return ((uint8_t *)&__notars[__prev_notar_idx]);
 }
 
 uint8_t *
@@ -250,6 +257,8 @@ notar_elect_raw_block(big_idx_t raw_block_idx)
 void
 notar_elect_next(void)
 {
+	__prev_notar_idx = __next_notar_idx;
+lprintf("notar_elect_next: block=%ju prev=%ld", block_idx_last(), __prev_notar_idx);
 	__next_notar_idx = notar_elect_raw_block(block_idx_last());
 
 	lprintf("block(%ju) = %s (%d)", block_idx_last() + 1,

@@ -485,12 +485,13 @@ op_blockannounce(event_info_t *info)
 	nev = info->payload;
 	block = nev->userdata;
 	index = block_idx(block);
-	lprintf("received block %ju", index);
 
 	msg = network_message(info);
 	size = be32toh(msg->payload_size);
 
 	if (raw_block_validate(nev->userdata, size)) {
+		lprintf("received block %ju", index);
+
 		raw_block_process(nev->userdata, nev->read_idx);
 
 		// get block from block storage (which is permanent, whereas
