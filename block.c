@@ -926,6 +926,7 @@ static int
 raw_block_timeout_process_block(raw_block_timeout_t *rt)
 {
 	raw_block_t *rb;
+	node_name_t d, n1, n2;
 
 	rb = (raw_block_t *)rt;
 
@@ -934,6 +935,12 @@ raw_block_timeout_process_block(raw_block_timeout_t *rt)
 		notar_raw_block_add(rb);
 		raw_block_write(rb, sizeof(raw_block_timeout_t));
 		raw_block_timeout_free();
+
+		lprintf("notar %s was denounced by %s and %s in block %ju",
+			public_key_node_name_r(rt->denounced_notar, d),
+			public_key_node_name_r(rt->notar[0], n1),
+			public_key_node_name_r(rt->notar[1], n2),
+			block_idx(rb));
 
 		notar_elect_next();
 
