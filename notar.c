@@ -48,7 +48,7 @@
 #include <time.h>
 #include <sys/time.h>
 
-#define BLOCK_EMPTY_DELAY_USECONDS 3000
+#define BLOCK_EMPTY_DELAY_USECONDS 2000
 #define PENDING_NOTARS_MAX 100
 
 static public_key_t *__notars = NULL;
@@ -79,7 +79,7 @@ notars_last_block_idx(void)
 uint8_t *
 notar_prev(void)
 {
-	return ((uint8_t *)&__notars[__prev_notar_idx]);
+	return (raw_block_last(NULL)->notar);
 }
 
 uint8_t *
@@ -258,7 +258,6 @@ void
 notar_elect_next(void)
 {
 	__prev_notar_idx = __next_notar_idx;
-lprintf("notar_elect_next: block=%ju prev=%ld", block_idx_last(), __prev_notar_idx);
 	__next_notar_idx = notar_elect_raw_block(block_idx_last());
 
 	lprintf("block(%ju) = %s (%d)", block_idx_last() + 1,

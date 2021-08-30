@@ -83,14 +83,16 @@ __event_active_add(event_info_t *event)
 	for (i = 0; i < __active_events_size; i++)
 		if (!__active_events[i])
 			break;
-
 	if (i == __active_events_size) {
+lprintf("+REALLOCING %p i=%ld size=%ld", __active_events, i, __active_events_size);
 		__active_events = realloc(__active_events,
 			sizeof(event_info_t *) * (__active_events_size + 100));
 		prevsize = sizeof(event_info_t *) * __active_events_size;
 		newsize = sizeof(event_info_t *) * 100;
+lprintf("prevsize=%ld newsize=%ld", prevsize, newsize);
 		bzero(__active_events + prevsize, newsize);
 		__active_events_size += 100;
+lprintf("-REALLOCING %p", __active_events);
 	}
 
 	__active_events[i] = event;
@@ -114,15 +116,16 @@ __event_active_check_timeout(void)
 	for (size_t i = 0; i < __active_events_size; i++) {
 		if (!(info = __active_events[i]))
 			continue;
+		if (!info->timeout_check) { // ignore events without check
+			__event_active_remove(info);
+			continue;
+		}
 		diff = curtime - info->time;
-lprintf("? %p: diff=%ld", info, diff);
 		if (diff < 3)
 			continue;
-		if (info->timeout_check) {
-lprintf("CHECKALL %p: diff=%ld %d", info, diff, info->timeout_check(info, diff));
+		if (info->timeout_check)
 			if (info->timeout_check(info, diff))
 				event_remove(info);
-}
 	}
 }
 
@@ -319,7 +322,6 @@ event_remove(event_info_t *info)
 {
 	if (info->flags & EVENT_TIMER)
 		FAIL(EX_SOFTWARE, "event_remove: info %p is a timer", info);
-
 	if (info->on_close)
 		info->on_close(info, 0);
 	close(info->ident);
@@ -446,7 +448,8 @@ event_process(time_t t, struct kevent event)
 			} else
 				event_remove(info);
 		} else {
-			info->callback(info, eventflags);
+			if (info->callback)
+				info->callback(info, eventflags);
 		}
 	}
 }
@@ -494,6 +497,6 @@ event_loop_start()
 			}
 			break;
 		}
+		__event_active_check_timeout();
 	}
-	__event_active_check_timeout();
 }

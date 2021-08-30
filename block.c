@@ -119,7 +119,8 @@ block_idx_last()
 raw_block_t *
 raw_block_last(size_t *size)
 {
-	*size = __raw_block_last_size;
+	if (size)
+		*size = __raw_block_last_size;
 
 	return (__raw_block_last);
 }
@@ -1466,7 +1467,7 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 	if (!blockchain_is_updating() && !notar_should_generate_block()) {
 		block_transit_messages_cleanup();
 		last = block_time(__raw_block_last);
-		if (t > last + 2) {
+		if (t >= last + 2) {
 #ifdef DEBUG_NETWORK
 			lprintf("no blocks seen in the last 2 seconds, "
 				"polling...");

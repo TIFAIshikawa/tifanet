@@ -215,6 +215,7 @@ __peerlist_request_tick(event_info_t *info, event_flags_t eventtype)
 {
 	__peerlist_timer = NULL;
 
+	peerlist_bootstrap();
 	peerlist_request_broadcast();
 }
 
@@ -226,6 +227,7 @@ peerlist_request_broadcast(void)
 	if (__peerlist_timer)
 		return;
 
+	peerlist_bootstrap();
 	message_broadcast(OP_PEERLIST, NULL, 0, 0);
 
 	delay = randombytes_random() % (HOUR_USECONDS / 3);

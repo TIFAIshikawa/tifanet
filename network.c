@@ -329,14 +329,12 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 static int
 message_event_timeout_check(event_info_t *info, time64_t timeout)
 {
-printf("CHECK %p", info);
-	return (timeout > 10);
+	return (timeout > 30);
 }
 
 static int
 message_event_connect_timeout_check(event_info_t *info, time64_t timeout)
 {
-printf("CHECKONNECT %p", info);
 	return (timeout > 2);
 }
 
@@ -688,20 +686,20 @@ is_local_interface_address(struct sockaddr_storage *addr)
 		}
 	}
 
-	for (struct ifaddrs *ifa = __ifaddrs; ifa; ifa = ifa->ifa_next) {
-		if (ifa->ifa_addr->sa_family != addr->ss_family)
+	for (struct ifaddrs *i = __ifaddrs; i; i = i->ifa_next) {
+		if (!i->ifa_addr || i->ifa_addr->sa_family != addr->ss_family)
 			continue;
-		switch (ifa->ifa_addr->sa_family) {
+		switch (i->ifa_addr->sa_family) {
 		case AF_INET:
 			a4 = (struct sockaddr_in *)addr;
-			ifa4 = (struct sockaddr_in *)ifa->ifa_addr;
+			ifa4 = (struct sockaddr_in *)i->ifa_addr;
 			slen = sizeof(struct in_addr);
 			if (memcmp(&ifa4->sin_addr, &a4->sin_addr, slen) == 0)
 				return (TRUE);
 			break;
 		case AF_INET6:
 			a6 = (struct sockaddr_in6 *)addr;
-			ifa6 = (struct sockaddr_in6 *)ifa->ifa_addr;
+			ifa6 = (struct sockaddr_in6 *)i->ifa_addr;
 			slen = sizeof(struct in6_addr);
 			if (memcmp(&ifa6->sin6_addr, &a6->sin6_addr, slen) == 0)
 				return (TRUE);
