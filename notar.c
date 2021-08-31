@@ -54,7 +54,6 @@
 static public_key_t *__notars = NULL;
 static big_idx_t __notars_size = 0;
 static big_idx_t __notars_count = 0;
-static big_idx_t __prev_notar_idx = 0;
 static big_idx_t __next_notar_idx = 0;
 static int __is_notar = FALSE;
 static big_idx_t __notars_last_block_idx = 0;
@@ -257,7 +256,6 @@ notar_elect_raw_block(big_idx_t raw_block_idx)
 void
 notar_elect_next(void)
 {
-	__prev_notar_idx = __next_notar_idx;
 	__next_notar_idx = notar_elect_raw_block(block_idx_last());
 
 	lprintf("block(%ju) = %s (%d)", block_idx_last() + 1,
@@ -296,38 +294,24 @@ notar_denounce_emergency_node(void)
 }
 
 void *
-notar_denounce_node(uint8_t node_idx)
+notar_denounce_node(big_idx_t node_idx)
 {
 	void *denounce_node;
+	big_idx_t block_idx;
+	raw_block_t *rb;
 	big_idx_t idx;
-	void *denouncer1;
-	int8_t found;
-	void *res;
-
-	if (node_idx >= 2)
-		FAIL(EX_SOFTWARE, "notar_denounce_node: illegal index %hhd",
-			node_idx);
 
 	if ((idx = block_idx_last()) < 2)
 		return (notar_denounce_emergency_node());
 
 	denounce_node = notar_next();
 
-	denouncer1 = NULL;
-	for (idx -= 1, found = -1; idx > 0; idx--) {
-		res = __notars[notar_elect_raw_block(idx)];
-		if (!pubkey_equals(res, denounce_node)) {
-			if (!denouncer1) {
-				found++;
-				denouncer1 = res;
-			} else {
-				if (!pubkey_equals(res, denouncer1))
-					found++;
-			}
-		}
+	block_idx = block_idx_last() - node_idx;
 
-		if (found == node_idx)
-			return (res);
+	for (big_idx_t i = block_idx; i > 0; i--) {
+		rb = block_load(i, NULL);
+		if (!pubkey_equals(rb->notar, denounce_node))
+			return (rb->notar);
 	}
 
 	return (notar_denounce_emergency_node());

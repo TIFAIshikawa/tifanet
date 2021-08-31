@@ -455,7 +455,8 @@ blocks_load(big_idx_t block_idx, size_t *size, big_idx_t max_blocks,
 	size_t sz, i;
 	size_t mb;
 
-	*size = 0;
+	if (size)
+		*size = 0;
 
 	if (block_idx > block_idx_last())
 		return (NULL);
@@ -476,7 +477,9 @@ blocks_load(big_idx_t block_idx, size_t *size, big_idx_t max_blocks,
 		sz += raw_block_size((raw_block_t *)(bs->blocks + boffset), 0);
 	}
 
-	*size = sz;
+	if (size)
+		*size = sz;
+
 	return (res);
 }
 
