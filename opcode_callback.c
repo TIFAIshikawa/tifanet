@@ -34,16 +34,12 @@
 #include <string.h>
 #include <sodium.h>
 #include <strings.h>
-#ifdef __linux__
-#  include <endian.h>
-#else
-#  include <sys/endian.h>
-#endif
 #include "log.h"
 #include "notar.h"
 #include "error.h"
 #include "cache.h"
 #include "config.h"
+#include "endian.h"
 #include "keypair.h"
 #include "network.h"
 #include "opcode_callback.h"

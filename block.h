@@ -30,13 +30,9 @@
 #ifndef __TIFA_BLOCK_H
 #define __TIFA_BLOCK_H
 
-#ifdef __linux__
-#  include <endian.h>
-#else
-#  include <sys/endian.h>
-#endif
 #include "peerlist.h"
 #include "network.h"
+#include "endian.h"
 #include "config.h"
 #include "pact.h"
 

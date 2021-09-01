@@ -34,14 +34,10 @@
 #include <sodium.h>
 #include <sys/types.h>
 #include <sys/param.h>
-#ifdef __linux__
-#  include <endian.h>
-#else
-#  include <sys/endian.h>
-#endif
 #include "log.h"
 #include "block.h"
 #include "config.h"
+#include "endian.h"
 #include "rxcache.h"
 
 static rxcache_t *__rxcache = NULL;

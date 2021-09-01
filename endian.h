@@ -27,40 +27,28 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __TIFA_ERROR_H
-#define __TIFA_ERROR_H
+#ifndef __TIFA_ENDIAN_H
+#define __TIFA_ENDIAN_H
 
 #ifdef __linux__
-#  include <netinet/in.h>
+#  include <endian.h>
+#elif defined(__APPLE__)
+#  include <libkern/OSByteOrder.h>
+
+#  define htobe16(x) OSSwapHostToBigInt16(x)
+#  define htole16(x) OSSwapHostToLittleInt16(x)
+#  define be16toh(x) OSSwapBigToHostInt16(x)
+#  define le16toh(x) OSSwapLittleToHostInt16(x)
+#  define htobe32(x) OSSwapHostToBigInt32(x)
+#  define htole32(x) OSSwapHostToLittleInt32(x)
+#  define be32toh(x) OSSwapBigToHostInt32(x)
+#  define le32toh(x) OSSwapLittleToHostInt32(x)
+#  define htobe64(x) OSSwapHostToBigInt64(x)
+#  define htole64(x) OSSwapHostToLittleInt64(x)
+#  define be64toh(x) OSSwapBigToHostInt64(x)
+#  define le64toh(x) OSSwapLittleToHostInt64(x)
+#else
+#  include <sys/endian.h>
 #endif
-#ifdef __APPLE__
-#  include <stdint.h>
-#endif
-#include <sys/types.h>
 
-typedef uint32_t error_t;
-
-enum {
-	NO_ERR			= 0,	/* No error */
-
-	ERR_BADSIG		= 1,	/* Bad signature */
-	ERR_BADNOTAR		= 2,	/* Bad notar */
-
-	ERR_MSG_TOOBIG		= 3,	/* Message too big */
-	ERR_MALFORMED		= 4,	/* Malformed content */
-
-	ERR_RX_PENDING		= 5,	/* RX already in pending pact */
-	ERR_RX_SPENT		= 6,	/* RX already spent */
-	ERR_RX_UNCOMPRESSED	= 7,	/* RX entries not compressed */
-	ERR_RX_FLOOD		= 8,	/* Too many subsequent pacts */
-	ERR_BADBALANCE		= 9,	/* Pact balance incorrect */
-
-	ERR_BLK_EARLY		= 10,	/* Block too early */
-	ERR_BLK_LATE		= 11,	/* Block too late */
-
-	__ERR_MAX
-};
-
-extern const char *schkerror(error_t error);
-
-#endif /* __TIFA_ERROR_H */
+#endif /* __TIFA_ENDIAN_H */

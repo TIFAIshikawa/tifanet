@@ -40,12 +40,8 @@
 #include <sys/mman.h>
 #include <sys/param.h>
 #include <sys/types.h>
-#ifdef __linux__
-#  include <endian.h>
-#else
-#  include <sys/endian.h>
-#endif
 #include "log.h"
+#include "endian.h"
 #include "block.h"
 #include "error.h"
 #include "notar.h"
@@ -137,7 +133,7 @@ mmap_file(char *filename, off_t truncsize)
 		FAILTEMP("open %s: %s\n", file, strerror(errno));
 	ftruncate(fd, truncsize);
 	if ((res = mmap(0, truncsize, PROT_READ | PROT_WRITE,
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
 		MAP_SHARED,
 #else
 		MAP_SHARED | MAP_NOCORE,
@@ -455,8 +451,7 @@ blocks_load(big_idx_t block_idx, size_t *size, big_idx_t max_blocks,
 	size_t sz, i;
 	size_t mb;
 
-	if (size)
-		*size = 0;
+	*size = 0;
 
 	if (block_idx > block_idx_last())
 		return (NULL);
@@ -477,9 +472,7 @@ blocks_load(big_idx_t block_idx, size_t *size, big_idx_t max_blocks,
 		sz += raw_block_size((raw_block_t *)(bs->blocks + boffset), 0);
 	}
 
-	if (size)
-		*size = sz;
-
+	*size = sz;
 	return (res);
 }
 

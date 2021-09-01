@@ -40,14 +40,10 @@
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#ifdef __linux__
-#  include <endian.h>
-#else
-#  include <sys/endian.h>
-#endif
 #include <netinet/in.h>
 #include "peerlist.h"
 #include "network.h"
+#include "endian.h"
 #include "config.h"
 #include "event.h"
 #include "log.h"

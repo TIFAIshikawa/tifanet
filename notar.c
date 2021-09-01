@@ -34,15 +34,11 @@
 #include <sodium.h>
 #include <sysexits.h>
 #include <sys/param.h>
-#ifdef __linux__
-#  include <endian.h>
-#else
-#  include <sys/endian.h>
-#endif
 #include "log.h"
 #include "notar.h"
 #include "block.h"
 #include "event.h"
+#include "endian.h"
 #include "config.h"
 
 #include <time.h>

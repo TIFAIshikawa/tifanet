@@ -41,15 +41,11 @@
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#ifdef __linux__
-#  include <endian.h>
-#else
-#  include <sys/endian.h>
-#endif
 #include <netinet/in.h>
 #include "log.h"
 #include "event.h"
 #include "notar.h"
+#include "endian.h"
 #include "config.h"
 #include "network.h"
 #include "peerlist.h"

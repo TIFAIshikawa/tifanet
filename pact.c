@@ -35,15 +35,11 @@
 #include <sodium.h>
 #include <sysexits.h>
 #include <sys/param.h>
-#ifdef __linux__
-#  include <endian.h>
-#else
-#  include <sys/endian.h>
-#endif
 #include "log.h"
 #include "block.h"
 #include "error.h"
 #include "config.h"
+#include "endian.h"
 #include "wallet.h"
 #include "rxcache.h"
 #include "pact.h"

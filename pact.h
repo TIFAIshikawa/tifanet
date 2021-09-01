@@ -30,11 +30,7 @@
 #ifndef __TIFA_PACT_H
 #define __TIFA_PACT_H
 
-#ifdef __linux__
-#  include <endian.h>
-#else
-#  include <sys/endian.h>
-#endif
+#include "endian.h"
 #include "config.h"
 #include "keypair.h"
 

@@ -34,13 +34,9 @@
 #include <limits.h>
 #include <inttypes.h>
 #include <sysexits.h>
-#ifdef __linux__
-#  include <endian.h>
-#else
-#  include <sys/endian.h>
-#endif
 #include "network.h"
 #include "rxcache.h"
+#include "endian.h"
 #include "config.h"
 #include "wallet.h"
 #include "block.h"
