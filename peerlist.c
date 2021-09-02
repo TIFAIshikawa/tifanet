@@ -382,9 +382,8 @@ peerlist_remove(struct sockaddr_storage *addr)
 		break;
 	}
 
-	if ((network_is_ipv6_capable() && !peerlist.list4_size &&
-		!peerlist.list6_size) ||
-		(!network_is_ipv6_capable() && !peerlist.list4_size))
+	if ((network_is_ipv6_capable() && peerlist.list6_size < 4) ||
+		(!network_is_ipv6_capable() && peerlist.list4_size < 4))
 		peerlist_bootstrap();
 }
 

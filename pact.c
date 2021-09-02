@@ -420,22 +420,6 @@ raw_pact_validate(raw_pact_t *pact)
 	return (rcv == snd ? NO_ERR : ERR_BADBALANCE);
 }
 
-void *
-pact_hash(raw_pact_t *t, void *hash)
-{
-	crypto_generichash_state crx;
-	size_t size, offset;
-
-	size = pact_size(t) - sizeof(small_hash_t);
-
-	offset = sizeof(time64_t);
-	crypto_generichash_init(&crx, NULL, 0, sizeof(small_hash_t));
-	crypto_generichash_update(&crx, (void *)t + offset, size);
-	crypto_generichash_final(&crx, hash, sizeof(small_hash_t));
-
-	return (hash);
-}
-
 int
 pact_delay(raw_pact_t *rt, int nesting)
 {

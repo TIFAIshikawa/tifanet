@@ -39,8 +39,7 @@ typedef enum {
 	EVENT_NONE		= 0,
 	EVENT_READ		= (1LL << 0),
 	EVENT_WRITE		= (1LL << 1),
-	EVENT_TIMEOUT		= (1LL << 16),
-	EVENT_FREE_PAYLOAD	= (1LL << 17),
+	EVENT_FREE_PAYLOAD	= (1LL << 16),
 	EVENT_TIMER		= (1LL << 32),
 } event_flags_t;
 

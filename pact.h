@@ -87,8 +87,6 @@ extern int raw_pact_notar_reward_validate(raw_pact_t *pact,
 	big_idx_t block_idx);
 extern int raw_pact_validate(raw_pact_t *pact);
 
-extern void *pact_hash(raw_pact_t *pact, void *hash);
-
 extern int pact_delay(raw_pact_t *rt, int nesting);
 
 extern int pacts_overlap(raw_pact_t *t1, raw_pact_t *t2);

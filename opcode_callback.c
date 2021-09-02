@@ -60,11 +60,6 @@ typedef struct  __attribute__((__packed__)) __op_lastblockinfo_response {
 	signature_t signature;
 } op_lastblockinfo_response_t;
 
-typedef struct  __attribute__((__packed__)) __op_pact_response {
-	error_t code;
-	small_hash_t pact_hash;
-} op_pact_response_t;
-
 void op_peerlist(event_info_t *info);
 void op_lastblockinfo(event_info_t *info);
 void op_getblock(event_info_t *info);
@@ -151,7 +146,7 @@ opcode_payload_size_valid(message_t *msg, int direction)
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (be32toh(msg->payload_size) >= sizeof(raw_pact_t) + sizeof(pact_tx_t) + sizeof(pact_rx_t) && be32toh(msg->payload_size) < MAXPACKETSIZE);
 		else
-			return sizeof(op_pact_response_t);
+			return (0);
 	case OP_GETRXCACHE:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (0);
@@ -486,16 +481,16 @@ op_blockannounce(event_info_t *info)
 	size = be32toh(msg->payload_size);
 
 	if (raw_block_validate(nev->userdata, size)) {
-		lprintf("received block %ju", index);
+		lprintf("received block %ju, size %ld", index, size);
 
-		raw_block_process(nev->userdata, nev->read_idx);
+		raw_block_process(block, size);
 
-		// get block from block storage (which is permanent, whereas
-		// nev->userdata will be freed), then redistribute
-        	block = block_load(index, &size);
-		if (block)
-        		message_broadcast(OP_BLOCKANNOUNCE, block, size,
-				htobe64(index));
+		// The received block may be an incomplete denouncement
+		// block, in which case it's not saved yet. If this is
+		// an incomplete denouncement block, it will be broadcast
+		// elsewhere.
+		if (block_idx_last() == index)
+			raw_block_broadcast(index);
 	} else {
 		if (raw_block_future_buffer_add(nev->userdata, size))
 			nev->userdata = NULL;
@@ -545,25 +540,18 @@ op_pact(event_info_t *info)
 void
 op_pact_server(event_info_t *info, network_event_t *nev)
 {
-	int err;
-	int delay;
 	size_t size;
 	time64_t tm;
-	message_t *msg;
 	raw_pact_t *p;
+	int delay = 0;
+	message_t *msg;
 	small_idx_t sz;
-	op_pact_response_t *response;
+	userinfo_t err;
 
 	msg = network_message(info);
 
 	p = nev->userdata;
 	size = pact_size(p);
-
-	response = calloc(1, sizeof(op_pact_response_t));
-#ifdef DEBUG_ALLOC
-	lprintf("+USERDATA %p PACT", response);
-#endif
-	pact_hash(p, response->pact_hash);
 
 	if (size != be32toh(msg->payload_size)) {
 		err = ERR_MALFORMED;
@@ -571,28 +559,25 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 		if ((err = raw_pact_validate(p)) == NO_ERR)
 			err = pact_pending_add(p);
 	}
-	if (err == NO_ERR)
+
+	if (err == NO_ERR) {
 		if ((delay = pact_delay(p, 0)) >= 10)
 			err = ERR_RX_FLOOD;
+	}
 	if (err == NO_ERR) {
 		tm = time(NULL);
 		p->time = htobe64(tm + delay);
 	}
 
-	if (err != NO_ERR) {
-#ifdef DEBUG_ALLOC
-		lprintf("-RAWPACT %p", p);
-#endif
-		free(p);
-	}
-	response->code = htobe32(err);
-	
+	if (err == NO_ERR)
+		nev->userdata = NULL;
+
 	nev->state = NETWORK_EVENT_STATE_HEADER;
 	nev->read_idx = 0;
 	nev->write_idx = 0;
-	nev->userdata = response;
-	nev->userdata_size = sizeof(op_pact_response_t);
-	msg->payload_size = htobe32(nev->userdata_size);
+	nev->userdata_size = 0;
+	msg->payload_size = 0;
+	msg->userinfo = htobe64(err);
 
 	event_update(info, EVENT_READ, EVENT_WRITE);
 	info->callback = message_write;
@@ -601,18 +586,21 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 	pacts_pending(&sz);
 	if (sz >= 2 && notar_should_generate_block())
 		block_generate_next();
-
 }
 
 void
 op_pact_client(event_info_t *info, network_event_t *nev)
 {
-	op_pact_response_t *response;
+	userinfo_t userinfo;
+	message_t *msg;
+	uint32_t code;
 
-	response = nev->userdata;
-	printf("  - result: %s\n", schkerror(be32toh(response->code)));
-	printf("    code: %u\n", be32toh(response->code));
-	printf("    pact_hash: %s\n", small_hash_str(response->pact_hash));
+	msg = network_message(info);
+	userinfo = be64toh(msg->userinfo);
+	code = (uint32_t)userinfo;
+
+	printf("  - result: %s\n", schkerror(code));
+	printf("    code: %u\n", code);
 
 	message_cancel(info);
 }

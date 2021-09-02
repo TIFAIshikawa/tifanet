@@ -442,15 +442,10 @@ event_process(time_t t, struct kevent event)
 			return;
 		}
 
-		if (info->flags & EVENT_TIMEOUT) {
-			if (t - info->time < 30) {
-				info->callback(info, eventflags);
-			} else
-				event_remove(info);
-		} else {
-			if (info->callback)
-				info->callback(info, eventflags);
-		}
+		if (info->callback)
+			info->callback(info, eventflags);
+		else
+			event_remove(info);
 	}
 }
 

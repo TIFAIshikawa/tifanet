@@ -75,7 +75,7 @@ static size_t __num_block_storages = 0;
 static raw_block_t *__raw_block_last = NULL;
 static size_t __raw_block_last_size = 0;
 
-static raw_block_timeout_t *__raw_block_timeout_tmp = NULL;
+static raw_block_timeout_t __raw_block_timeout_tmp = { 0 };
 
 static big_idx_t __getblocks_target_idx = 0;
 
@@ -84,7 +84,6 @@ static event_info_t *__block_poll_timer = NULL;
 static message_t *__block_transit_messages[BLOCK_TRANSIT_MESSAGES_MAX] = { 0 };
 static raw_block_t *__block_future_buffer[BLOCK_FUTURE_BUFFERS_MAX] = { 0 };
 
-static void raw_block_broadcast(big_idx_t index);
 static void add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt);
 static void __raw_block_process(raw_block_t *raw_block, size_t blocksize,
 	int process_caches);
@@ -451,7 +450,8 @@ blocks_load(big_idx_t block_idx, size_t *size, big_idx_t max_blocks,
 	size_t sz, i;
 	size_t mb;
 
-	*size = 0;
+	if (size)
+		*size = 0;
 
 	if (block_idx > block_idx_last())
 		return (NULL);
@@ -472,7 +472,9 @@ blocks_load(big_idx_t block_idx, size_t *size, big_idx_t max_blocks,
 		sz += raw_block_size((raw_block_t *)(bs->blocks + boffset), 0);
 	}
 
-	*size = sz;
+	if (size)
+		*size = sz;
+
 	return (res);
 }
 
@@ -573,12 +575,15 @@ raw_block_size(raw_block_t *raw_block, size_t limit)
 }
 
 static size_t
-block_denounce_timeout_fill(raw_block_timeout_t *rt)
+block_denounce_timeout_fill(void)
 {
+	raw_block_timeout_t *rt;
 	size_t signsize;
 	size_t res = 0;
 	void *self;
 	void *prev;
+
+	rt = &__raw_block_timeout_tmp;
 
 	self = node_public_key();
 	signsize = offsetof(raw_block_timeout_t, notar);
@@ -598,11 +603,13 @@ block_denounce_timeout_fill(raw_block_timeout_t *rt)
 }
 
 static void
-block_denounce_timeout_init(raw_block_timeout_t *rt)
+block_denounce_timeout_init(void)
 {
+	raw_block_timeout_t *rt;
 	size_t sz, size;
 
 	size = sizeof(raw_block_timeout_t);
+	rt = &__raw_block_timeout_tmp;
 
 	rt->index = htobe64(block_idx_last() + 1);
 	rt->time = htobe64(block_time(raw_block_last(&sz)) +
@@ -621,11 +628,8 @@ block_denounce_emergency_timeout_create(void)
 	void *self;
 
 	size = sizeof(raw_block_timeout_t);
-	__raw_block_timeout_tmp = rt = calloc(1, size);
-#ifdef DEBUG_ALLOC
-	lprintf("+RAW_BLOCK_EMERGENCY_TIMEOUT_TMP %p", __raw_block_timeout_tmp);
-#endif
-	block_denounce_timeout_init(rt);
+	rt = &__raw_block_timeout_tmp;
+	block_denounce_timeout_init();
 	rt->time = htobe64(block_time(__raw_block_last) +
                 BLOCK_DENOUNCE_EMERGENCY_DELAY_SECONDS);
 
@@ -633,7 +637,7 @@ block_denounce_emergency_timeout_create(void)
 	signsize = offsetof(raw_block_timeout_t, notar);
 
 	for (big_idx_t i = 0; i < 2; i++) {
-		bcopy(self, rt->notar[i], size);
+		bcopy(self, rt->notar[i], sizeof(public_key_t));
 		raw_block_sign((raw_block_t *)rt, signsize, rt->signature[i]);
 	}
 
@@ -656,19 +660,12 @@ block_denounce_timeout_create(void)
 
 	size = sizeof(raw_block_timeout_t);
 
-	if (!__raw_block_timeout_tmp) {
-		__raw_block_timeout_tmp = calloc(1, size);
-#ifdef DEBUG_ALLOC
-		lprintf("+RAW_BLOCK_TIMEOUT_TMP %p", __raw_block_timeout_tmp);
-#endif
-		block_denounce_timeout_init(__raw_block_timeout_tmp);
-	}
-	rb = (raw_block_t *)__raw_block_timeout_tmp;
+	rb = (raw_block_t *)&__raw_block_timeout_tmp;
 
-	if (!__raw_block_timeout_tmp->index)
-		block_denounce_timeout_init(__raw_block_timeout_tmp);
+	if (!__raw_block_timeout_tmp.index)
+		block_denounce_timeout_init();
 
-	if (block_denounce_timeout_fill(__raw_block_timeout_tmp))
+	if (block_denounce_timeout_fill())
 		if (raw_block_timeout_validate(rb, size))
 			raw_block_timeout_process(rb);
 }
@@ -695,6 +692,8 @@ raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize)
 			"future: %ld vs %ld", block_idx(raw_block), bt, ct);
 		return (FALSE);
 	}
+	if (lbt == bt && raw_block->index == __raw_block_last->index)
+		return (FALSE);
 	if (lbt + BLOCK_DENOUNCE_DELAY_SECONDS != bt) {
 		lprintf("denounce timeout block with index %ju has invalid "
 			"time: %ld vs %ld", block_idx(raw_block), bt,
@@ -753,6 +752,11 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	size_t tbs, size, scount;
 
 	// check block size
+	if (blocksize < sizeof(big_idx_t)) {
+		lprintf("block with unknown index is smaller than big_idx_t: "
+			"%d", blocksize);
+		return (FALSE);
+	}
 	if (blocksize < sizeof(raw_block_t) + sizeof(raw_pact_t) +
 		sizeof(pact_rx_t)) {
 		lprintf("block with index %ju smaller than block skeleton: %d",
@@ -765,6 +769,7 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 
 	size = raw_block_size(raw_block, blocksize);
 	if (blocksize != size) {
+raw_block_fprint(log_file(), raw_block);
 		lprintf("block with index %ju has illegal size: %d vs %d",
 			block_idx(raw_block), size, blocksize);
 		return (FALSE);
@@ -790,7 +795,8 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	}
 
 	// check block index, if we have a last block (in case of caches only)
-	if (!config_is_caches_only() || (config_is_caches_only() && __raw_block_last)) {
+	if (!config_is_caches_only() ||
+		(config_is_caches_only() && __raw_block_last)) {
 		if (block_idx(__raw_block_last) == block_idx(raw_block)) {
 			lprintf("already have block with index %ju",
 				block_idx(raw_block));
@@ -910,13 +916,7 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 static void
 raw_block_timeout_free(void)
 {
-	if (__raw_block_timeout_tmp) {
-#ifdef DEBUG_ALLOC
-		lprintf("-RAW_BLOCK_TIMEOUT_TMP %p", __raw_block_timeout_tmp);
-#endif
-		free(__raw_block_timeout_tmp);
-		__raw_block_timeout_tmp = NULL;
-	}
+	bzero(&__raw_block_timeout_tmp, sizeof(raw_block_timeout_t));
 }
 
 static int
@@ -941,11 +941,13 @@ raw_block_timeout_process_block(raw_block_timeout_t *rt)
 
 		notar_elect_next();
 
-		raw_block_broadcast(block_idx(rb));
+		// the block isn't yet in the chain, so use message_broadcast()
+		if (rt->index)
+			message_broadcast(OP_BLOCKANNOUNCE, rt,
+				sizeof(raw_block_timeout_t), rt->index);
 
 		return (TRUE);
 	}
-
 	return (FALSE);
 }
 
@@ -965,7 +967,6 @@ raw_block_timeout_process(raw_block_t *raw_block)
 	raw_block_timeout_t *rb;
 	raw_block_timeout_t *rt;
 	size_t blocksize;
-	size_t size;
 
 	blocksize = sizeof(raw_block_timeout_t);
 	rb = (raw_block_timeout_t *)raw_block;
@@ -973,22 +974,17 @@ raw_block_timeout_process(raw_block_t *raw_block)
 	if (raw_block_timeout_process_block(rb))
 		return;
 
-	if (!__raw_block_timeout_tmp) {
-		__raw_block_timeout_tmp = malloc(blocksize);
-#ifdef DEBUG_ALLOC
-		lprintf("+RAW_BLOCK_TIMEOUT_TMP %p", __raw_block_timeout_tmp);
-#endif
-		bcopy(raw_block, __raw_block_timeout_tmp, blocksize);
+	if (!__raw_block_timeout_tmp.index) {
+		bcopy(raw_block, &__raw_block_timeout_tmp, blocksize);
 		return;
 	} else {
-		block_denounce_timeout_merge(__raw_block_timeout_tmp, rb);
+		block_denounce_timeout_merge(&__raw_block_timeout_tmp, rb);
 	}
 
-	rt = __raw_block_timeout_tmp;
-	size = sizeof(raw_block_timeout_t);
-	if (block_denounce_timeout_fill(rt))
-		message_broadcast(OP_BLOCKANNOUNCE, __raw_block_timeout_tmp,
-			size, rt->index);
+	rt = &__raw_block_timeout_tmp;
+	if (block_denounce_timeout_fill())
+		message_broadcast(OP_BLOCKANNOUNCE, &__raw_block_timeout_tmp,
+			sizeof(raw_block_timeout_t), rt->index);
 
 	raw_block_timeout_process_block(rt);
 }
@@ -1068,6 +1064,9 @@ block_finalize(block_t *block, size_t *blocksize)
 	raw_pact_t *rt;
 	raw_pact_t **rtl;
 	small_idx_t max_tr, max_rtr;
+	time64_t tm;
+
+	tm = time(NULL);
 
 	bs = sizeof(raw_block_t);
 	if (block->flags & BLOCK_FLAG_NEW_NOTAR)
@@ -1091,7 +1090,7 @@ block_finalize(block_t *block, size_t *blocksize)
 	}
 	for (small_idx_t ti = 0; ti < rts; ti++) {
 		rt = rtl[ti];
-//		if (be64toh(rt->time) <= tm) {
+		if (be64toh(rt->time) <= tm) {
 			size = sizeof(raw_pact_t);
 			size += be32toh(rt->num_tx) * sizeof(pact_tx_t);
 			size += be32toh(rt->num_rx) * sizeof(pact_rx_t);
@@ -1099,7 +1098,7 @@ block_finalize(block_t *block, size_t *blocksize)
 				break;
 			bs += size;
 			max_rtr++;
-//		}
+		}
 	}
 
 	res = calloc(1, bs);
@@ -1132,13 +1131,13 @@ block_finalize(block_t *block, size_t *blocksize)
 
 	for (small_idx_t ti = 0; ti < max_rtr; ti++) {
 		rt = rtl[ti];
-//		if (be64toh(rt->time) <= tm) {
+		if (be64toh(rt->time) <= tm) {
 			size = sizeof(raw_pact_t);
 			size += be32toh(rt->num_tx) * sizeof(pact_tx_t) +
 				be32toh(rt->num_rx) * sizeof(pact_rx_t);
 			bcopy(rt, curbuf, size);
 			curbuf += size;
-//		}
+		}
 	}
 
 	rxcache_raw_block_add(res);
@@ -1286,7 +1285,6 @@ void
 raw_block_fprint(FILE *f, raw_block_t *raw_block)
 {
 	small_idx_t tx_num, rx_num;
-	small_hash_t thash;
 	char *node_name;
 	char *addr_name;
 	raw_pact_t *t;
@@ -1315,13 +1313,10 @@ raw_block_fprint(FILE *f, raw_block_t *raw_block)
 	t = raw_block_pacts(raw_block);
 	
 	for (small_idx_t i = 0; i < num_pacts(raw_block); i++) {
-		pact_hash(t, thash);
 		tx_num = pact_num_tx(t);
 		rx_num = pact_num_rx(t);
 		tx = (void *)t + sizeof(raw_pact_t);
-		fprintf(f, "    - pact_hash: %s\n", small_hash_str(thash));
-		
-		fprintf(f, "      tx:%s\n", tx_num ? "" : " []");
+		fprintf(f, "    - tx:%s\n", tx_num ? "" : " []");
 		for (small_idx_t ri = 0; ri < tx_num; ri++) {
 			fprintf(f, "        - block_idx: %ju\n",
 				be64toh(tx->block_idx));
@@ -1344,14 +1339,15 @@ raw_block_fprint(FILE *f, raw_block_t *raw_block)
 	}
 }
 
-static void
+void
 raw_block_broadcast(big_idx_t index)
 {
 	raw_block_t *block;
 	size_t size;
 
 	block = block_load(index, &size);
-	message_broadcast(OP_BLOCKANNOUNCE, block, size, htobe64(index));
+	if (block && size)
+		message_broadcast(OP_BLOCKANNOUNCE, block, size, index);
 }
 
 void
@@ -1473,10 +1469,7 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 			// panic-broadcast the block again
 			if (pubkey_equals(node_public_key(), notar_prev())) {
 				peerlist_request_broadcast();
-				message_broadcast(OP_BLOCKANNOUNCE,
-					__raw_block_last,
-					__raw_block_last_size,
-					__raw_block_last->index);
+				raw_block_broadcast(block_idx_last());
 			}
 			block_getnext_broadcast();
 			blockchain_update();

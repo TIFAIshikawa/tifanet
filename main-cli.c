@@ -493,8 +493,8 @@ opt_send(int argc, char *argv[])
 		balance = address_unspent(src);
 
 	if (balance < amount) {
-		printf("---\nresult:\n  error: amount %.2f exceeds balance "
-			"%.2f\n", stoi(amount), stoi(balance));
+		printf("---\nresult:\n  error: amount %.2f exceeds balance.\n"
+			"  available: %.2f\n", stoi(amount), stoi(balance));
 		return (FALSE);
 	}
 

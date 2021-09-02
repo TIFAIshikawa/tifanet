@@ -113,6 +113,8 @@ extern size_t raw_block_size(raw_block_t *raw_block, size_t limit);
 
 extern raw_block_t *block_finalize(block_t *block, size_t *blocksize);
 
+extern void raw_block_broadcast(big_idx_t index);
+
 extern void block_free(block_t *block);
 
 extern void *raw_block_new_notar(raw_block_t *raw_block);

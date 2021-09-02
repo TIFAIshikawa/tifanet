@@ -71,6 +71,7 @@ static void message_event_on_close(event_info_t *, event_flags_t);
 static int message_event_timeout_check(event_info_t *, time64_t timeout);
 static int message_event_connect_timeout_check(event_info_t *,
 	time64_t timeout);
+static int message_header_validate(event_info_t *info);
 
 static event_info_t *__listen_info_ipv4 = NULL;
 static event_info_t *__listen_info_ipv6 = NULL;
@@ -256,7 +257,7 @@ accept_connection(event_info_t *info, event_flags_t eventtype)
 	nev.remote_addr_len = len;
 	nev.type = NETWORK_EVENT_TYPE_SERVER;
 	nev.state = NETWORK_EVENT_STATE_HEADER;
-	event = event_add(fd, EVENT_READ | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
+	event = event_add(fd, EVENT_READ | EVENT_FREE_PAYLOAD,
 		message_read, &nev, sizeof(network_event_t));
 	event->on_close = message_event_on_close;
 	event->timeout_check = message_event_timeout_check;
@@ -271,31 +272,20 @@ message_cancel(event_info_t *info)
 static void
 message_event_on_close(event_info_t *info, event_flags_t flags)
 {
-	struct sockaddr_storage tmp;
 	network_event_t *nev;
 	message_t *msg;
 	opcode_t opcode;
-	socklen_t len;
-	char c;
 
 	nev = info->payload;
 	msg = network_message(info);
 
 	block_transit_message_remove(msg);
 
-	if (!nev->read_idx && !nev->write_idx) {
-		len = sizeof(struct sockaddr_storage);
-		if (getpeername(info->ident, (struct sockaddr *)&tmp,
-			&len) == -1) {
-			if (errno != ENOTCONN) {
-				read(info->ident, &c, 1);
-				lprintf("message_event_on_close: connect %s: "
-					"%s", peername(&nev->remote_addr),
-					strerror(errno));
-			}
-			peerlist_remove(&nev->remote_addr);
-		}
-	}
+	if (memcmp(msg->magic, TIFA_IDENT, sizeof(TIFA_IDENT)) != 0 &&
+		!msg->userinfo &&
+		((nev->type == NETWORK_EVENT_TYPE_SERVER && !nev->write_idx) ||
+		 (nev->type == NETWORK_EVENT_TYPE_CLIENT && !nev->read_idx)))
+		peerlist_remove(&nev->remote_addr);
 
 	if (nev->on_close)
 		nev->on_close(info, flags);
@@ -546,7 +536,7 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 	nev.remote_addr_len = len;
 	nev.userdata_size = be32toh(message->payload_size);
 
-	res = event_add(fd, EVENT_WRITE | EVENT_TIMEOUT | EVENT_FREE_PAYLOAD,
+	res = event_add(fd, EVENT_WRITE | EVENT_FREE_PAYLOAD,
 			message_write, &nev, sizeof(network_event_t));
 	res->on_close = message_event_on_close;
 	res->timeout_check = message_event_connect_timeout_check;
