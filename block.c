@@ -405,9 +405,9 @@ add_notar_reward(block_t *block, raw_pact_t **rp, size_t nrp)
 static block_t *
 block_create(void)
 {
+	void *pn = NULL;
 	block_t *res;
 	time64_t tm;
-	void *pn;
 
 	res = block_alloc();
 
@@ -423,11 +423,14 @@ block_create(void)
 			res->time = tm;
 	}
 
-	pn = notar_pending_next();
-	res->flags |= pn != NULL ? BLOCK_FLAG_NEW_NOTAR : 0;
 	bcopy(node_public_key(), res->notar, sizeof(public_key_t));
-	if (pn)
-		bcopy(pn, res->new_notar, sizeof(public_key_t));
+
+	if (res->index % 10 == 0) {
+		pn = notar_pending_next();
+		res->flags |= pn != NULL ? BLOCK_FLAG_NEW_NOTAR : 0;
+		if (pn)
+			bcopy(pn, res->new_notar, sizeof(public_key_t));
+	}
 
 	return (res);
 }
@@ -540,7 +543,7 @@ exit(1);
 */
 	block_free(block);
 
-	lprintf("generated block %ju", block_idx(rb));
+	lprintf("generated block %ju, size %ld", block_idx(rb), size);
 
 	__raw_block_process(rb, size, FALSE);
 
@@ -777,6 +780,13 @@ raw_block_fprint(log_file(), raw_block);
 
 	if (block_idx(raw_block) <= block_idx_last()) {
 		// check with our blockchain and possibly take some action
+		return (FALSE);
+	}
+
+	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR &&
+		block_idx(raw_block) % 10) {
+		lprintf("block with index %ju tries to add new notar "
+			"when this is not allowed", block_idx(raw_block));
 		return (FALSE);
 	}
 

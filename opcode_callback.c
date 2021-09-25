@@ -346,12 +346,14 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 	blockinfo = nev->userdata;
 	rmt_idx = be64toh(blockinfo->index);
 
-	lprintf("last block is %ju (our last is %ju)", rmt_idx, lcl_idx);
+	if (rmt_idx != lcl_idx)
+		lprintf("%s's last block is %ju (our last is %ju)",
+			peername(&nev->remote_addr), rmt_idx, lcl_idx);
 
 	if (lcl_idx < rmt_idx) {
 		getblocks(rmt_idx);
 		notar_elect_next();
-	} else {
+	} else if (lcl_idx > rmt_idx) {
 		daemon_start();
 		notar_elect_next();
 	}
@@ -434,7 +436,8 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 			if (!raw_block_validate(block, size))
 				break;
 
-			lprintf("received block %ju", block_idx(block));
+			lprintf("received block %ju, size %ld",
+				block_idx(block), size);
 			raw_block_process(block, size);
 		}
 
@@ -461,7 +464,8 @@ op_notarannounce(event_info_t *info)
 void
 op_notardenounce(event_info_t *info)
 {
-printf("denounce\n");
+	lprintf("OP_DENOUNCE not implemented");
+	message_cancel(info);
 }
 
 void
@@ -516,7 +520,8 @@ op_blockannounce_ignore(event_info_t *info)
 void
 op_notarproof(event_info_t *info)
 {
-printf("notarproof\n");
+	lprintf("OP_NOTARPROOF not implemented");
+	message_cancel(info);
 }
 
 void
@@ -553,12 +558,11 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 	p = nev->userdata;
 	size = pact_size(p);
 
-	if (size != be32toh(msg->payload_size)) {
+	if (size != be32toh(msg->payload_size))
 		err = ERR_MALFORMED;
-	} else {
+	else
 		if ((err = raw_pact_validate(p)) == NO_ERR)
 			err = pact_pending_add(p);
-	}
 
 	if (err == NO_ERR) {
 		if ((delay = pact_delay(p, 0)) >= 10)
@@ -601,6 +605,7 @@ op_pact_client(event_info_t *info, network_event_t *nev)
 
 	printf("  - result: %s\n", schkerror(code));
 	printf("    code: %u\n", code);
+	printf("    peer: %s\n", peername(&nev->remote_addr));
 
 	message_cancel(info);
 }

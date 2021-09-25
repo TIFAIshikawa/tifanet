@@ -296,7 +296,8 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 	opcode = msg->opcode;
 	if ((nev->type == NETWORK_EVENT_TYPE_SERVER && opcode == OP_GETBLOCK) ||
 		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_BLOCKANNOUNCE) ||
-		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_NOTARANNOUNCE)) {
+		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_NOTARANNOUNCE) ||
+		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_PACT)) {
 #ifdef DEBUG_ALLOC
 		lprintf("NOT FREEING USERDATA %p", nev->userdata);
 #endif

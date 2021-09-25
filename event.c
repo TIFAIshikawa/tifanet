@@ -70,7 +70,7 @@ event_handler_init()
 		FAIL(EX_TEMPFAIL, "init_event_handler: kqueue: ",
 				  strerror(errno));
 
-	__active_events_size = 100;
+	__active_events_size = 1000;
 	__active_events = calloc(1, sizeof(event_info_t *) *
 		__active_events_size);
 }
@@ -78,19 +78,19 @@ event_handler_init()
 static void
 __event_active_add(event_info_t *event)
 {
-	size_t prevsize, newsize, i;
+	size_t prevsize, addsize, newsize, i;
 
 	for (i = 0; i < __active_events_size; i++)
 		if (!__active_events[i])
 			break;
 	if (i == __active_events_size) {
 lprintf("+REALLOCING %p i=%ld size=%ld", __active_events, i, __active_events_size);
-		__active_events = realloc(__active_events,
-			sizeof(event_info_t *) * (__active_events_size + 100));
 		prevsize = sizeof(event_info_t *) * __active_events_size;
-		newsize = sizeof(event_info_t *) * 100;
+		addsize = sizeof(event_info_t *) * 100;
+		newsize = prevsize + addsize;
+		__active_events = realloc(__active_events, newsize);
 lprintf("prevsize=%ld newsize=%ld", prevsize, newsize);
-		bzero(__active_events + prevsize, newsize);
+		bzero(__active_events + prevsize, addsize);
 		__active_events_size += 100;
 lprintf("-REALLOCING %p", __active_events);
 	}
@@ -137,7 +137,7 @@ event_info_alloc(int ident, event_callback_t callback, void *payload,
 
 	res = calloc(1, sizeof(event_info_t) + payload_size);
 #ifdef DEBUG_ALLOC
-	lprintf("+EVENT %p %d", res, ident);
+	lprintf("+EVENT %p %d size=%ld", res, ident, sizeof(event_info_t) + payload_size);
 #endif
 
 	res->ident = ident;
@@ -162,6 +162,7 @@ event_add(int fd, event_flags_t eventflags, event_callback_t callback,
 {
 	event_info_t *res;
 
+//lprintf("+EVENT fd=%ld payload=%p size=%ld", fd, payload, payload_size);
 	res = event_info_alloc(fd, callback, payload, payload_size);
 	res->flags = eventflags;
 
@@ -322,6 +323,7 @@ event_remove(event_info_t *info)
 {
 	if (info->flags & EVENT_TIMER)
 		FAIL(EX_SOFTWARE, "event_remove: info %p is a timer", info);
+//lprintf("-EVENT fd=%ld", info->ident);
 	if (info->on_close)
 		info->on_close(info, 0);
 	close(info->ident);

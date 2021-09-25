@@ -254,7 +254,7 @@ notar_elect_next(void)
 {
 	__next_notar_idx = notar_elect_raw_block(block_idx_last());
 
-	lprintf("block(%ju) = %s (%d)", block_idx_last() + 1,
+	lprintf("notar(%ju) = %s (%d)", block_idx_last() + 1,
 		public_key_node_name(__notars[__next_notar_idx]),
 		__next_notar_idx);
 
