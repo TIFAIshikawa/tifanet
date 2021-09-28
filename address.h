@@ -56,7 +56,7 @@ extern char *public_key_address_name_r(public_key_t public_key,
 extern char *address_name(address_t *address);
 extern uint8_t *address_public_key(address_t *address);
 
-extern amount_t address_unspent(address_t *address);
+extern amount_t address_balance(address_t *address);
 
 extern int address_name_to_public_key(const char *name, void *dst);
 

@@ -60,6 +60,7 @@
 #define BLOCK_DENOUNCE_EMERGENCY_DELAY_SECONDS 29
 #define BLOCK_TRANSIT_MESSAGES_MAX 20
 #define BLOCK_FUTURE_BUFFERS_MAX 20
+#define BLOCK_NOTAR_INTERVAL 1000
 
 typedef struct __block_storage {
 	void *blocks;
@@ -315,10 +316,17 @@ block_alloc(void)
 static void
 raw_block_sign(raw_block_t *raw_block, size_t size, signature_t result)
 {
+	void *part2;
 	keypair_t *notar_kp;
+	size_t part1size, part2size;
 
+	part1size = offsetof(raw_block_t, signature);
+	part2size = size - part1size - sizeof(signature_t);
+	part2 = (void *)raw_block + part1size + sizeof(signature_t);
 	notar_kp = node_keypair();
-	keypair_sign_start(notar_kp, raw_block, size);
+
+	keypair_sign_start(notar_kp, raw_block, part1size);
+	keypair_sign_update(notar_kp, part2, part2size);
 	keypair_sign_finalize(notar_kp, result);
 }
 
@@ -425,7 +433,7 @@ block_create(void)
 
 	bcopy(node_public_key(), res->notar, sizeof(public_key_t));
 
-	if (res->index % 10 == 0) {
+	if (res->index % BLOCK_NOTAR_INTERVAL == 0) {
 		pn = notar_pending_next();
 		res->flags |= pn != NULL ? BLOCK_FLAG_NEW_NOTAR : 0;
 		if (pn)
@@ -528,10 +536,10 @@ block_generate_next()
 	raw_block_t *rb;
 
 	block = block_create();
-
 /*
 bcopy(block->notar, block->new_notar, sizeof(public_key_t));
 block->flags |= BLOCK_FLAG_NEW_NOTAR;
+block->index = 0;
 */
 	rb = block_finalize(block, &size);
 /*
@@ -747,12 +755,13 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	int err;
 	void *crx;
 	hash_t pbh;
+	void *part2;
 	big_idx_t idx;
 	void *new_notar;
-	signature_t sig;
 	time_t ct, bt, lbt;
 	raw_pact_t *t, *tt;
 	size_t tbs, size, scount;
+	size_t part1size, part2size;
 
 	// check block size
 	if (blocksize < sizeof(big_idx_t)) {
@@ -772,7 +781,6 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 
 	size = raw_block_size(raw_block, blocksize);
 	if (blocksize != size) {
-raw_block_fprint(log_file(), raw_block);
 		lprintf("block with index %ju has illegal size: %d vs %d",
 			block_idx(raw_block), size, blocksize);
 		return (FALSE);
@@ -784,7 +792,7 @@ raw_block_fprint(log_file(), raw_block);
 	}
 
 	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR &&
-		block_idx(raw_block) % 10) {
+		block_idx(raw_block) % BLOCK_NOTAR_INTERVAL) {
 		lprintf("block with index %ju tries to add new notar "
 			"when this is not allowed", block_idx(raw_block));
 		return (FALSE);
@@ -843,15 +851,17 @@ raw_block_fprint(log_file(), raw_block);
 	}
 
 	// check signature
-	bcopy(raw_block->signature, sig, sizeof(signature_t));
-	bzero(raw_block->signature, sizeof(signature_t));
-	crx = keypair_verify_start(raw_block, blocksize);
-	if (!keypair_verify_finalize(crx, raw_block->notar, sig)) {
+	part1size = offsetof(raw_block_t, signature);
+	part2size = blocksize - part1size - sizeof(signature_t);
+	part2 = (void *)raw_block + part1size + sizeof(signature_t);
+	crx = keypair_verify_start(raw_block, part1size);
+	keypair_verify_update(crx, part2, part2size);
+	if (!keypair_verify_finalize(crx, raw_block->notar,
+		raw_block->signature)) {
 		lprintf("block has incorrect signature, index %ju",
 			block_idx(raw_block));
 		return (FALSE);
 	}
-	bcopy(sig, raw_block->signature, sizeof(signature_t));
 
 	if ((new_notar = raw_block_new_notar(raw_block))) {
 		if (pubkey_is_zero(new_notar)) {

@@ -39,6 +39,7 @@
 #include "endian.h"
 #include "config.h"
 #include "wallet.h"
+#include "error.h"
 #include "block.h"
 #include "notar.h"
 #include "cache.h"
@@ -178,7 +179,7 @@ opt_addresses(int argc, char *argv[])
 			for (size_t j = 0; j < num_addrs; j++)
 				printf("     - \"%s\": %2.2f\n",
 					address_name(addrs[j]),
-					stoi(address_unspent(addrs[j])));
+					stoi(address_balance(addrs[j])));
 		}
 		break;
 	case 1:
@@ -191,7 +192,7 @@ opt_addresses(int argc, char *argv[])
 		addrs = wallet_addresses(n, &num_addrs);
 		for (size_t j = 0; j < num_addrs; j++)
 			printf("  - \"%s\": %2.2f\n", address_name(addrs[j]),
-				stoi(address_unspent(addrs[j])));
+				stoi(address_balance(addrs[j])));
 		break;
 	case 2:
 		if (strcmp(argv[0], "-c") == 0) {
@@ -428,6 +429,20 @@ check_amount(const char *amount)
 static void
 send_callback(event_info_t *info, event_flags_t eventflags)
 {
+	network_event_t *nev;
+	userinfo_t userinfo;
+	message_t *msg;
+	uint32_t code;
+
+	nev = network_event(info);
+	msg = network_message(info);
+	userinfo = be64toh(msg->userinfo);
+	code = (uint32_t)userinfo;
+
+	printf("  - result: %s\n", schkerror(code));
+	printf("    code: %u\n", code);
+	printf("    peer: %s\n", peername(&nev->remote_addr));
+
 	send_count--;
 	if (!send_count)
 		exit(0);
@@ -490,7 +505,7 @@ opt_send(int argc, char *argv[])
 	if (wallet)
 		balance = wallet_balance(wallet);
 	if (src)
-		balance = address_unspent(src);
+		balance = address_balance(src);
 
 	if (balance < amount) {
 		printf("---\nresult:\n  error: amount %.2f exceeds balance.\n"
@@ -510,7 +525,7 @@ opt_send(int argc, char *argv[])
 	} else {
 		addrs = wallet_addresses(wallet, &naddrs);
 		for (size_t i = 0; i < naddrs; i++) {
-			if (address_unspent(addrs[i]) == amount) {
+			if (address_balance(addrs[i]) == amount) {
 				src = addrs[i];
 				break;
 			}
@@ -523,7 +538,7 @@ opt_send(int argc, char *argv[])
 		} else {
 			tmp_amount = amount;
 			for (size_t i = 0; i < naddrs && tmp_amount; i++) {
-				a_amount = address_unspent(addrs[i]);
+				a_amount = address_balance(addrs[i]);
 				if (tmp_amount >= a_amount) {
 					tmp_amount -= a_amount;
 					items = rxcaches_for_address(addrs[i],
@@ -653,11 +668,6 @@ main(int argc, char *argv[])
 
 	node_keypair_load();
 	wallets_load();
-/*
-block_generate_next();
-raw_block_t *rb = raw_block_last();
-exit(1);
-*/
 	argc -= 2;
 	argv += 2;
 
@@ -672,6 +682,12 @@ exit(1);
 		return opt_reset(argc, argv);
 
 	if (!check_caches_only()) {
+/*
+size_t sz;
+block_generate_next();
+raw_block_t *rb = raw_block_last(&sz);
+exit(1);
+*/
 		blockchain_load();
 		block_last_load();
 		notarscache_load();

@@ -57,6 +57,6 @@ extern rxcache_t *rxcache_for_idxs(big_idx_t block_idx, small_idx_t block_rx_idx
 extern int rxcache_exists(big_idx_t block_idx, small_idx_t block_rx_idx);
 extern void rxcache_remove(big_idx_t block_idx, small_idx_t block_rx_idx);
 
-extern amount_t unspent_for_public_key(public_key_t address);
+extern amount_t public_key_balance(public_key_t address);
 
 #endif /* __TIFA_RXCACHE_H */

@@ -224,13 +224,13 @@ address_save(address_t *address, const char *path)
 }
 
 amount_t
-address_unspent(address_t *address)
+address_balance(address_t *address)
 {
 	public_key_t *pk;
 
 	pk = (void *)address_public_key(address);
 
-	return (unspent_for_public_key((void *)pk));
+	return (public_key_balance((void *)pk));
 }
 
 int

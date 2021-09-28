@@ -280,7 +280,7 @@ rxcache_create(void)
 	size_t sz;
 	raw_block_t *b;
 
-	lprintf("scanning blocks for unspent rx entries...");
+	lprintf("creating rxcache...");
 
 	if (!(f = config_fopen("blocks/rxcache.bin", "w+")))
 		FAILTEMP("rxcache_create: %s", strerror(errno));
@@ -374,7 +374,7 @@ rxcache_reset(void)
 }
 
 amount_t
-unspent_for_public_key(public_key_t address)
+public_key_balance(public_key_t address)
 {
 
 	rxcache_t item;

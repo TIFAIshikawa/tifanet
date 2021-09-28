@@ -70,7 +70,7 @@
 #endif
 /* ^^ =============================================== ^^ */
 
-#define TIFA_NOTAR_REWARD	50
+#define TIFA_NOTAR_REWARD	10
 
 #ifndef FALSE
 #define FALSE   0

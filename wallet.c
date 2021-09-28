@@ -272,7 +272,7 @@ wallet_balance(wallet_t *w)
 
         addrs = wallet_addresses(w, &naddrs);
         for (size_t i = 0; i < naddrs; i++)
-                res += address_unspent(addrs[i]);
+                res += address_balance(addrs[i]);
 
         return (res);
 }

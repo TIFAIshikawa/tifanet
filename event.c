@@ -70,7 +70,7 @@ event_handler_init()
 		FAIL(EX_TEMPFAIL, "init_event_handler: kqueue: ",
 				  strerror(errno));
 
-	__active_events_size = 1000;
+	__active_events_size = 100;
 	__active_events = calloc(1, sizeof(event_info_t *) *
 		__active_events_size);
 }
@@ -79,20 +79,21 @@ static void
 __event_active_add(event_info_t *event)
 {
 	size_t prevsize, addsize, newsize, i;
+	void *new_buffer;
 
 	for (i = 0; i < __active_events_size; i++)
 		if (!__active_events[i])
 			break;
 	if (i == __active_events_size) {
-lprintf("+REALLOCING %p i=%ld size=%ld", __active_events, i, __active_events_size);
 		prevsize = sizeof(event_info_t *) * __active_events_size;
 		addsize = sizeof(event_info_t *) * 100;
 		newsize = prevsize + addsize;
-		__active_events = realloc(__active_events, newsize);
-lprintf("prevsize=%ld newsize=%ld", prevsize, newsize);
-		bzero(__active_events + prevsize, addsize);
 		__active_events_size += 100;
-lprintf("-REALLOCING %p", __active_events);
+
+		new_buffer = calloc(1, newsize);
+		bcopy(__active_events, new_buffer, prevsize);
+		free(__active_events);
+		__active_events = new_buffer;
 	}
 
 	__active_events[i] = event;

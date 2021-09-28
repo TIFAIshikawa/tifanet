@@ -44,6 +44,8 @@
 #include "network.h"
 #include "opcode_callback.h"
 
+#define GETBLOCKS_MAX_BLOCKS 1500
+
 typedef void (*opcode_callback_t)(event_info_t *info);
 typedef int (*opcode_ignore_callback_t)(event_info_t *info);
 
@@ -387,8 +389,8 @@ op_getblock_server(event_info_t *info, network_event_t *nev)
 	size_t size;
 
 	msg = network_message(info);
-	if (!(block = blocks_load(be64toh(msg->userinfo), &size, 5000,
-		MAXPACKETSIZE))) {
+	if (!(block = blocks_load(be64toh(msg->userinfo), &size,
+		GETBLOCKS_MAX_BLOCKS, MAXPACKETSIZE))) {
 		message_cancel(info);
 		return;
 	}
@@ -595,18 +597,6 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 void
 op_pact_client(event_info_t *info, network_event_t *nev)
 {
-	userinfo_t userinfo;
-	message_t *msg;
-	uint32_t code;
-
-	msg = network_message(info);
-	userinfo = be64toh(msg->userinfo);
-	code = (uint32_t)userinfo;
-
-	printf("  - result: %s\n", schkerror(code));
-	printf("    code: %u\n", code);
-	printf("    peer: %s\n", peername(&nev->remote_addr));
-
 	message_cancel(info);
 }
 
