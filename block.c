@@ -35,11 +35,16 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <sodium.h>
+#include <inttypes.h>
 #include <sysexits.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/param.h>
 #include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/nameser.h>
+#include <arpa/nameser_compat.h>
+#include <resolv.h>
 #include "log.h"
 #include "endian.h"
 #include "block.h"
@@ -61,6 +66,7 @@
 #define BLOCK_TRANSIT_MESSAGES_MAX 20
 #define BLOCK_FUTURE_BUFFERS_MAX 20
 #define BLOCK_NOTAR_INTERVAL 1000
+#define BLOCK_REWIND_INTERVAL 100
 
 typedef struct __block_storage {
 	void *blocks;
@@ -97,6 +103,8 @@ static void raw_block_timeout_fprint(FILE *f, raw_block_timeout_t *raw_block);
 static void block_transit_messages_cleanup(void);
 static raw_block_t *raw_block_future_get(big_idx_t idx);
 static void raw_block_future_free(raw_block_t *rb);
+
+static int __dns_txt_request(char *request, char *response, size_t size);
 
 
 big_idx_t
@@ -320,10 +328,17 @@ raw_block_sign(raw_block_t *raw_block, size_t size, signature_t result)
 	keypair_t *notar_kp;
 	size_t part1size, part2size;
 
+	notar_kp = node_keypair();
+
+	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT) {
+		keypair_sign_start(notar_kp, raw_block, size);
+		keypair_sign_finalize(notar_kp, result);
+		return;
+	}
+
 	part1size = offsetof(raw_block_t, signature);
 	part2size = size - part1size - sizeof(signature_t);
 	part2 = (void *)raw_block + part1size + sizeof(signature_t);
-	notar_kp = node_keypair();
 
 	keypair_sign_start(notar_kp, raw_block, part1size);
 	keypair_sign_update(notar_kp, part2, part2size);
@@ -635,10 +650,8 @@ block_denounce_emergency_timeout_create(void)
 {
 	raw_block_timeout_t *rt;
 	size_t signsize;
-	size_t size;
 	void *self;
 
-	size = sizeof(raw_block_timeout_t);
 	rt = &__raw_block_timeout_tmp;
 	block_denounce_timeout_init();
 	rt->time = htobe64(block_time(__raw_block_last) +
@@ -1415,6 +1428,8 @@ getblocks(big_idx_t target_idx)
 
 	lprintf("fully synchronized");
 
+	blockchain_dns_verify();
+
 	if (config_is_sync_only()) {
 		peerlist_save();
 		exit(0);
@@ -1475,6 +1490,9 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 	__block_poll_timer = NULL;
 
 	t = time(NULL);
+
+	if (randombytes_random() % 40 == 0)
+		blockchain_dns_verify();
 
 	if (!blockchain_is_updating() && !notar_should_generate_block()) {
 		block_transit_messages_cleanup();
@@ -1618,4 +1636,140 @@ raw_block_future_free(raw_block_t *rb)
 	}
 
 	free(rb);
+}
+
+static int
+__dns_txt_request(char *request, char *response, size_t size)
+{
+	ns_rr rr;
+	size_t sz;
+	size_t nmesg;
+	ns_msg nsmsg = {0};
+	char dnsres[PACKETSZ];
+
+	if ((sz = res_query(request, ns_c_in, ns_t_txt, (u_char *)dnsres,
+		PACKETSZ)) == -1) {
+		lprintf("blockchain_dns_verify: failed to retrieve %s",
+			request);
+		return (FALSE);
+	}
+
+	if (ns_initparse((u_char *)dnsres, sz, &nsmsg) != 0) {
+		lprintf("blockchain_dns_verify: failed to parse %s",
+			request);
+		return (FALSE);
+	}
+
+	nmesg = ns_msg_count(nsmsg, ns_s_an);
+	for (size_t i = 0; i < nmesg; i++) {
+		if (ns_parserr(&nsmsg, ns_s_an, i, &rr) != 0)
+			continue;
+
+		if (ns_rr_type(rr) != ns_t_txt)
+			continue;
+
+		if ((sz = ns_rr_rdlen(rr)) < 2)
+			continue;
+
+		bcopy((void *)ns_rr_rdata(rr) + 1, response, sz - 1);
+		response[sz - 1] = '\0';
+		return (TRUE);
+	}
+
+	return (FALSE);
+}
+
+void
+blockchain_dns_verify(void)
+{
+	hash_t bh;
+	size_t sz, bs;
+	char *hashstr;
+	big_idx_t idx;
+	char dnsreq[256];
+	char txtres[256];
+	raw_block_t *block;
+
+	res_init();
+
+	sz = snprintf(dnsreq, 256, "last.blocks.%s.tifa.network", __network);
+
+	if (!__dns_txt_request(dnsreq, txtres, 256)) {
+		lprintf("blockchain_dns_verify: no valid responses found while "
+			"retrieving %s", dnsreq);
+		return;
+	}
+
+	if (!(hashstr = index(txtres, ' '))) {
+		lprintf("blockchain_dns_verify: invalid response while "
+			"retrieving %s: %s", dnsreq, txtres);
+		return;
+	}
+	*hashstr = '\0';
+	hashstr++;
+
+	for (size_t i = 0; txtres[i]; i++) {
+		if (txtres[i] < '0' || txtres[i] > '9') {
+			lprintf("blockchain_dns_verify: block index not a "
+				"number while retrieving %s: %s", dnsreq,
+				txtres);
+			return;
+		}
+	}
+	idx = strtoimax(txtres, NULL, 10);
+
+	if (idx > block_idx_last()) {
+		idx = block_idx_last();
+		if (!(block = block_load(idx, &bs)))
+			return;
+		sz = snprintf(dnsreq, 256, "%ju.blocks.%s.tifa.network",
+			idx, __network);
+		if (!__dns_txt_request(dnsreq, txtres, 256)) {
+			lprintf("blockchain_dns_verify: no valid responses "
+				"found while retrieving %s", dnsreq);
+			return;
+		}
+
+		raw_block_hash(block, bs, bh);
+		if (strcmp(txtres, hash_str(bh)) == 0) {
+			lprintf("block %ju verified with DNS", idx);
+			return;
+		}
+	}
+
+	if (!(block = block_load(idx, &bs)))
+		return;
+
+	raw_block_hash(block, bs, bh);
+	if (strcmp(hashstr, hash_str(bh)) == 0) {
+		lprintf("block %ju verified with DNS", idx);
+		return;
+	}
+
+	lprintf("blockchain_dns_verify: block with index %ju differs from "
+		"DNS! Rewinding to a previous correct point", idx);
+	// hash wasn't the same! now rewind until we find a valid
+	// block index & hash combination.
+	for (; idx > BLOCK_REWIND_INTERVAL; idx -= BLOCK_REWIND_INTERVAL) {
+		if (!(block = block_load(idx, &bs)))
+			continue;
+
+		sz = snprintf(dnsreq, 256, "%ju.blocks.%s.tifa.network",
+			idx, __network);
+		if (!__dns_txt_request(dnsreq, txtres, 256)) {
+			lprintf("blockchain_dns_verify: no valid responses "
+				"found while retrieving %s", dnsreq);
+			continue;
+		}
+
+		raw_block_hash(block, bs, bh);
+		if (strcmp(txtres, hash_str(bh)) == 0)
+			break;
+	}
+
+	if (idx < BLOCK_REWIND_INTERVAL)
+		idx = 0;
+
+	lprintf("blockchain_dns_verify: last correct block appears to be %ju",
+		idx);
 }

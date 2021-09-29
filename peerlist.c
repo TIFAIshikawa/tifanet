@@ -57,14 +57,6 @@ peerlist_t peerlist = {
 	.list6 = NULL
 };
 
-#if defined(ALPHA)
-static char *__network = "alpha";
-#elif defined(BETA)
-static char *__network = "beta";
-#else
-static char *__network = "gamma";
-#endif
-
 static const char *__bootstrap_server = "bootstrap.%s.tifa.network";
 
 static event_info_t *__peerlist_timer = NULL;

@@ -62,31 +62,34 @@ typedef struct  __attribute__((__packed__)) __op_lastblockinfo_response {
 	signature_t signature;
 } op_lastblockinfo_response_t;
 
-void op_peerlist(event_info_t *info);
-void op_lastblockinfo(event_info_t *info);
-void op_getblock(event_info_t *info);
-void op_notarannounce(event_info_t *info);
-void op_notardenounce(event_info_t *info);
-void op_blockannounce(event_info_t *info);
-void op_notarproof(event_info_t *info);
-void op_pact(event_info_t *info);
-void op_getrxcache(event_info_t *info);
-void op_getnotars(event_info_t *info);
+static void op_peerlist(event_info_t *info);
+static void op_lastblockinfo(event_info_t *info);
+static void op_getblock(event_info_t *info);
+static void op_notarannounce(event_info_t *info);
+static void op_notardenounce(event_info_t *info);
+static void op_blockannounce(event_info_t *info);
+static void op_notarproof(event_info_t *info);
+static void op_pact(event_info_t *info);
+static void op_getrxcache(event_info_t *info);
+static void op_getnotars(event_info_t *info);
 
-int op_blockannounce_ignore(event_info_t *info);
+static int op_blockannounce_ignore(event_info_t *info);
 
-void op_peerlist_server(event_info_t *info, network_event_t *nev);
-void op_peerlist_client(event_info_t *info, network_event_t *nev);
-void op_lastblockinfo_server(event_info_t *info, network_event_t *nev);
-void op_lastblockinfo_client(event_info_t *info, network_event_t *nev);
-void op_getblock_server(event_info_t *info, network_event_t *nev);
-void op_getblock_client(event_info_t *info, network_event_t *nev);
-void op_pact_server(event_info_t *info, network_event_t *nev);
-void op_pact_client(event_info_t *info, network_event_t *nev);
-void op_getrxcache_server(event_info_t *info, network_event_t *nev);
-void op_getrxcache_client(event_info_t *info, network_event_t *nev);
-void op_getnotars_server(event_info_t *info, network_event_t *nev);
-void op_getnotars_client(event_info_t *info, network_event_t *nev);
+static void op_peerlist_server(event_info_t *info, network_event_t *nev);
+static void op_peerlist_client(event_info_t *info, network_event_t *nev);
+static void op_lastblockinfo_server(event_info_t *info, network_event_t *nev);
+static void op_lastblockinfo_client(event_info_t *info, network_event_t *nev);
+static void op_getblock_server(event_info_t *info, network_event_t *nev);
+static void op_getblock_client(event_info_t *info, network_event_t *nev);
+static void op_pact_server(event_info_t *info, network_event_t *nev);
+static void op_pact_client(event_info_t *info, network_event_t *nev);
+static void op_getrxcache_server(event_info_t *info, network_event_t *nev);
+static void op_getrxcache_client(event_info_t *info, network_event_t *nev);
+static void op_getnotars_server(event_info_t *info, network_event_t *nev);
+static void op_getnotars_client(event_info_t *info, network_event_t *nev);
+
+static int __verify_lastblockinfo(op_lastblockinfo_response_t *info,
+	network_event_t *nev);
 
 opcode_ignore_callback_t opcode_ignore_callbacks[OP_MAXOPCODE] = {
 	NULL,			// OP_NONE
@@ -190,7 +193,7 @@ opcode_execute(event_info_t *info)
 	opcode_callbacks[msg->opcode](info);
 }
 
-void
+static void
 op_peerlist(event_info_t *info)
 {
 	network_event_t *nev;
@@ -208,7 +211,7 @@ op_peerlist(event_info_t *info)
 	}
 }
 
-void
+static void
 op_peerlist_server(event_info_t *info, network_event_t *nev)
 {
 	size_t size;
@@ -249,7 +252,7 @@ op_peerlist_server(event_info_t *info, network_event_t *nev)
 	message_write(info, EVENT_WRITE);
 }
 
-void
+static void
 op_peerlist_client(event_info_t *info, network_event_t *nev)
 {
 	uint8_t *buf;
@@ -284,7 +287,7 @@ op_peerlist_client(event_info_t *info, network_event_t *nev)
 	peerlist_save();
 }
 
-void
+static void
 op_lastblockinfo(event_info_t *info)
 {
 	network_event_t *nev;
@@ -302,7 +305,7 @@ op_lastblockinfo(event_info_t *info)
 	}
 }
 
-void
+static void
 op_lastblockinfo_server(event_info_t *info, network_event_t *nev)
 {
 	size_t size;
@@ -337,7 +340,33 @@ op_lastblockinfo_server(event_info_t *info, network_event_t *nev)
 	message_write(info, EVENT_WRITE);
 }
 
-void
+static int
+__verify_lastblockinfo(op_lastblockinfo_response_t *info, network_event_t *nev)
+{
+	size_t size;
+	hash_t hash;
+	raw_block_t *block;
+
+	if (!(block = block_load(be64toh(info->index), &size)))
+		return (FALSE);
+
+	if (!hash_equals(block->prev_block_hash, info->prev_block_hash)) {
+		lprintf("peer %s, block %ju, has different prev_block_hash!",
+			peername(&nev->remote_addr), be64toh(info->index)); 
+		return (FALSE);
+	}
+
+	raw_block_hash(block, size, hash);
+	if (!hash_equals(hash, info->hash)) {
+		lprintf("peer %s, block %ju, has different block hash!",
+			peername(&nev->remote_addr), be64toh(info->index)); 
+		return (FALSE);
+	}
+
+	return (TRUE);
+}
+
+static void
 op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 {
 	big_idx_t lcl_idx, rmt_idx;
@@ -356,6 +385,11 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 		getblocks(rmt_idx);
 		notar_elect_next();
 	} else if (lcl_idx > rmt_idx) {
+		if (!__verify_lastblockinfo(blockinfo, nev)) {
+			peerlist_remove(&nev->remote_addr);
+			blockchain_dns_verify();
+		}
+
 		daemon_start();
 		notar_elect_next();
 	}
@@ -363,7 +397,7 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 	message_cancel(info);
 }
 
-void
+static void
 op_getblock(event_info_t *info)
 {
 	network_event_t *nev;
@@ -381,7 +415,7 @@ op_getblock(event_info_t *info)
 	}
 }
 
-void
+static void
 op_getblock_server(event_info_t *info, network_event_t *nev)
 {
 	raw_block_t *block;
@@ -407,19 +441,20 @@ op_getblock_server(event_info_t *info, network_event_t *nev)
 	message_write(info, EVENT_WRITE);
 }
 
-void
+static void
 op_getblock_client(event_info_t *info, network_event_t *nev)
 {
 	size_t size, bufsize;
 	message_t *msg;
 	void *block;
+	size_t p;
 
 	msg = network_message(info);
 
 	block = nev->userdata;
 	bufsize = be32toh(msg->payload_size);
 
-	for (; bufsize > 0;) {
+	for (p = 0; bufsize > 0; p++) {
         	// check block size
 		if (bufsize < sizeof(raw_block_t) + sizeof(raw_pact_t) +
 			sizeof(pact_rx_t)) {
@@ -447,10 +482,13 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 		bufsize -= size;
 	}
 
+	if (p > 100)
+		blockchain_dns_verify();
+
 	message_cancel(info);
 }
 
-void
+static void
 op_notarannounce(event_info_t *info)
 {
 	network_event_t *nev;
@@ -463,14 +501,14 @@ op_notarannounce(event_info_t *info)
 	message_cancel(info);
 }
 
-void
+static void
 op_notardenounce(event_info_t *info)
 {
 	lprintf("OP_DENOUNCE not implemented");
 	message_cancel(info);
 }
 
-void
+static void
 op_blockannounce(event_info_t *info)
 {
 	network_event_t *nev;
@@ -505,7 +543,7 @@ op_blockannounce(event_info_t *info)
 	message_cancel(info);
 }
 
-int
+static int
 op_blockannounce_ignore(event_info_t *info)
 {
 	message_t *msg;
@@ -519,14 +557,14 @@ op_blockannounce_ignore(event_info_t *info)
 	return (res);
 }
 
-void
+static void
 op_notarproof(event_info_t *info)
 {
 	lprintf("OP_NOTARPROOF not implemented");
 	message_cancel(info);
 }
 
-void
+static void
 op_pact(event_info_t *info)
 {
 	network_event_t *nev;
@@ -544,7 +582,7 @@ op_pact(event_info_t *info)
 	}
 }
 
-void
+static void
 op_pact_server(event_info_t *info, network_event_t *nev)
 {
 	size_t size;
@@ -594,13 +632,13 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 		block_generate_next();
 }
 
-void
+static void
 op_pact_client(event_info_t *info, network_event_t *nev)
 {
 	message_cancel(info);
 }
 
-void
+static void
 op_getrxcache(event_info_t *info)
 {
 	network_event_t *nev;
@@ -618,7 +656,7 @@ op_getrxcache(event_info_t *info)
 	}
 }
 
-void
+static void
 op_getrxcache_server(event_info_t *info, network_event_t *nev)
 {
 	message_t *msg;
@@ -655,7 +693,7 @@ op_getrxcache_server(event_info_t *info, network_event_t *nev)
 	message_write(info, EVENT_WRITE);
 }
 
-void
+static void
 op_getrxcache_client(event_info_t *info, network_event_t *nev)
 {
 	message_t *msg;
@@ -666,7 +704,7 @@ op_getrxcache_client(event_info_t *info, network_event_t *nev)
 	message_cancel(info);
 }
 
-void
+static void
 op_getnotars(event_info_t *info)
 {
 	network_event_t *nev;
@@ -684,7 +722,7 @@ op_getnotars(event_info_t *info)
 	}
 }
 
-void
+static void
 op_getnotars_server(event_info_t *info, network_event_t *nev)
 {
 	message_t *msg;
@@ -721,7 +759,7 @@ op_getnotars_server(event_info_t *info, network_event_t *nev)
 	message_write(info, EVENT_WRITE);
 }
 
-void
+static void
 op_getnotars_client(event_info_t *info, network_event_t *nev)
 {
 	message_t *msg;

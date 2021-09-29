@@ -193,6 +193,8 @@ main(int argc, char *argv[])
 
 	event_handler_init();
 
+	blockchain_dns_verify();
+
 	peerlist_request_broadcast();
 
 	if (config_is_caches_only()) {

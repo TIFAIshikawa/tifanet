@@ -3,6 +3,7 @@ LD	?=cc
 DESTDIR	?=/usr/local
 CFLAGS	+=-g -Wall -Wmissing-prototypes -Wstrict-prototypes
 LDFLAGS	+=-lsodium
+LDEXTRA != if [ `uname -s` = Linux ]; then echo -n "-lresolv"; else echo -n ""; fi
 
 BASENAME=tifa
 
@@ -29,10 +30,10 @@ beta:
 
 
 $(DAEMON): config.h $(DOBJS)
-	$(CC) -o $(DAEMON) $(DOBJS) $(LDFLAGS)
+	$(CC) -o $(DAEMON) $(DOBJS) $(LDFLAGS) $(LDEXTRA)
 
 $(CLI): config.h $(COBJS)
-	$(CC) -o $(CLI) $(COBJS) $(LDFLAGS)
+	$(CC) -o $(CLI) $(COBJS) $(LDFLAGS) $(LDEXTRA)
 
 install-daemon: $(DAEMON)
 	install -D $(DESTDIR)/sbin tifanetd

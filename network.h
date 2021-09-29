@@ -46,7 +46,8 @@ enum opcodes {
 	OP_PEERLIST,			// Get list of peers.
 
 	OP_LASTBLOCKINFO,		// Get last block index.
-	OP_GETBLOCK,			// Get block X.
+	OP_GETBLOCK,			// Get block X, potentially receiving
+					// blocks X .. X + 1500
 
 	OP_NOTARANNOUNCE,		// Announce self to the network,
 					// if we want to be a notar.

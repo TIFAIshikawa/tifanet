@@ -90,6 +90,8 @@
 #define MINUTE_USECONDS 60000
 #define HOUR_USECONDS 3600000
 
+extern char *__network;
+
 typedef uint32_t small_idx_t;
 typedef uint64_t big_idx_t;
 typedef uint16_t tiny_flags_t;

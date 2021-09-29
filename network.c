@@ -51,6 +51,14 @@
 #include "peerlist.h"
 #include "opcode_callback.h"
 
+#if defined(ALPHA)
+char *__network = "alpha";
+#elif defined(BETA)
+char *__network = "beta";
+#else
+char *__network = "gamma";
+#endif
+
 const char *const opcode_names[OP_MAXOPCODE] = {
 	"OP_NONE",
 	"OP_PEERLIST",

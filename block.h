@@ -126,7 +126,6 @@ extern void raw_block_fprint(FILE *f, raw_block_t *raw_block);
 
 extern void blockchain_load(void);
 extern void blockchain_update(void);
-extern void blockchain_set_updating(int updating);
 extern int blockchain_is_updating(void);
 
 extern void getblock(big_idx_t index);
@@ -143,6 +142,8 @@ extern void block_transit_message_add(message_t *msg);
 extern void block_transit_message_remove(message_t *msg);
 
 extern int raw_block_future_buffer_add(raw_block_t *rb, size_t size);
+
+extern void blockchain_dns_verify(void);
 
 inline static int
 block_exists(big_idx_t index)
