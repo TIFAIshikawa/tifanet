@@ -1689,8 +1689,11 @@ blockchain_dns_verify(void)
 	char dnsreq[256];
 	char txtres[256];
 	raw_block_t *block;
+	static big_idx_t __dns_last_verified = 0;
 
 	res_init();
+	_res.retrans = 1;
+	_res.retry = blockchain_is_updating() ? 3 : 1;
 
 	sz = snprintf(dnsreq, 256, "last.blocks.%s.tifa.network", __network);
 
@@ -1720,8 +1723,13 @@ blockchain_dns_verify(void)
 
 	if (idx > block_idx_last()) {
 		idx = block_idx_last();
+
+//		if (idx == __dns_last_verified)
+//			return;
+
 		if (!(block = block_load(idx, &bs)))
 			return;
+
 		sz = snprintf(dnsreq, 256, "%ju.blocks.%s.tifa.network",
 			idx, __network);
 		if (!__dns_txt_request(dnsreq, txtres, 256)) {
@@ -1732,16 +1740,21 @@ blockchain_dns_verify(void)
 
 		raw_block_hash(block, bs, bh);
 		if (strcmp(txtres, hash_str(bh)) == 0) {
+			__dns_last_verified = idx;
 			lprintf("block %ju verified with DNS", idx);
 			return;
 		}
 	}
+
+//	if (idx == __dns_last_verified)
+//		return;
 
 	if (!(block = block_load(idx, &bs)))
 		return;
 
 	raw_block_hash(block, bs, bh);
 	if (strcmp(hashstr, hash_str(bh)) == 0) {
+		__dns_last_verified = idx;
 		lprintf("block %ju verified with DNS", idx);
 		return;
 	}
