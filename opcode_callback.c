@@ -34,6 +34,8 @@
 #include <string.h>
 #include <sodium.h>
 #include <strings.h>
+#include <sys/socket.h>
+
 #include "log.h"
 #include "notar.h"
 #include "error.h"
@@ -68,7 +70,6 @@ static void op_getblock(event_info_t *info);
 static void op_notarannounce(event_info_t *info);
 static void op_notardenounce(event_info_t *info);
 static void op_blockannounce(event_info_t *info);
-static void op_notarproof(event_info_t *info);
 static void op_pact(event_info_t *info);
 static void op_getrxcache(event_info_t *info);
 static void op_getnotars(event_info_t *info);
@@ -279,6 +280,7 @@ op_peerlist_client(event_info_t *info, network_event_t *nev)
 
 	for (small_idx_t i = 0; i < response->peers_ipv4_count; i++)
 		peerlist_add_ipv4(addr4_list[i]);
+
 	for (small_idx_t i = 0; i < response->peers_ipv6_count; i++)
 		peerlist_add_ipv6(addr6_list[i]);
 
@@ -385,10 +387,11 @@ op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
 		getblocks(rmt_idx);
 		notar_elect_next();
 	} else if (lcl_idx > rmt_idx) {
-		if (!__verify_lastblockinfo(blockinfo, nev)) {
-			peerlist_remove(&nev->remote_addr);
-			blockchain_dns_verify();
-		}
+		// if the peer gives false information - we think - ,
+		// boycott this peer. DNS verification will prove the
+		// peer either wrong or correct in time
+		if (!__verify_lastblockinfo(blockinfo, nev))
+			peerlist_ban(&nev->remote_addr);
 
 		daemon_start();
 		notar_elect_next();
@@ -444,8 +447,11 @@ op_getblock_server(event_info_t *info, network_event_t *nev)
 static void
 op_getblock_client(event_info_t *info, network_event_t *nev)
 {
-	size_t size, bufsize;
+	size_t size, bufsize, csz;
+	hash_t bh, ch;
+	raw_block_t *check;
 	message_t *msg;
+	big_idx_t idx;
 	void *block;
 	size_t p;
 
@@ -469,12 +475,25 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 				": %d vs %d", size, bufsize);
 			break;
 		}
-		if (block_idx(block) == block_idx_last() + 1) {
+
+		idx = block_idx(block);
+		if (idx <= block_idx_last()) {
+			check = block_load(idx, &csz);
+			raw_block_hash(block, size, bh);
+			raw_block_hash(check, csz, ch);
+			if (!hash_equals(bh, ch)) {
+				lprintf("peer %s, block %ju, has different "
+					"block hash!",
+					peername(&nev->remote_addr), idx);
+				peerlist_ban(&nev->remote_addr);
+				break;
+			}
+		}
+		if (idx == block_idx_last() + 1) {
 			if (!raw_block_validate(block, size))
 				break;
 
-			lprintf("received block %ju, size %ld",
-				block_idx(block), size);
+			lprintf("received block %ju, size %ld", idx, size);
 			raw_block_process(block, size);
 		}
 
@@ -486,6 +505,9 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 		blockchain_dns_verify();
 
 	message_cancel(info);
+
+	if (notar_should_generate_block())
+		block_generate_next();
 }
 
 static void
@@ -535,6 +557,9 @@ op_blockannounce(event_info_t *info)
 		// elsewhere.
 		if (block_idx_last() == index)
 			raw_block_broadcast(index);
+
+		if (notar_should_generate_block())
+			block_generate_next();
 	} else {
 		if (raw_block_future_buffer_add(nev->userdata, size))
 			nev->userdata = NULL;
@@ -555,13 +580,6 @@ op_blockannounce_ignore(event_info_t *info)
 			block_transit_message_add(msg);
 
 	return (res);
-}
-
-static void
-op_notarproof(event_info_t *info)
-{
-	lprintf("OP_NOTARPROOF not implemented");
-	message_cancel(info);
 }
 
 static void
@@ -628,7 +646,7 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 	message_write(info, EVENT_WRITE);
 
 	pacts_pending(&sz);
-	if (sz >= 2 && notar_should_generate_block())
+	if (notar_should_generate_block())
 		block_generate_next();
 }
 

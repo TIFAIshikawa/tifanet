@@ -50,7 +50,31 @@
 
 #define PEERLIST_SAVE_DELAY_MS 1000
 
+typedef struct {
+	time64_t time;
+	struct in_addr addr;
+} ban_ipv4_t;
+
+typedef struct {
+	time64_t time;
+	struct in6_addr addr;
+} ban_ipv6_t;
+
+typedef struct {
+	size_t list4_size;
+	size_t list6_size;
+	ban_ipv4_t *list4;
+	ban_ipv6_t *list6;
+} banlist_t;
+
 peerlist_t peerlist = {
+	.list4_size = 0,
+	.list6_size = 0,
+	.list4 = NULL,
+	.list6 = NULL
+};
+
+banlist_t banlist = {
 	.list4_size = 0,
 	.list6_size = 0,
 	.list4 = NULL,
@@ -63,6 +87,11 @@ static event_info_t *__peerlist_timer = NULL;
 static event_info_t *__peerlist_save_timer = NULL;
 
 static void peerlist_bootstrap(void);
+static void banlist_init(void);
+static void banlist_add_ipv4(struct in_addr addr);
+static void banlist_add_ipv6(struct in6_addr addr);
+static int banlist_is_banned_ipv4(struct in_addr addr);
+static int banlist_is_banned_ipv6(struct in6_addr addr);
 
 static void
 __peerlist_load_entry_sanitize(char *tmp)
@@ -85,7 +114,7 @@ __peerlist_load_entry_sanitize(char *tmp)
 }
 
 void
-peerlist_load()
+peerlist_load(void)
 {
 	FILE *f;
 	int r, s;
@@ -132,6 +161,8 @@ peerlist_load()
 		if (errno != ENOENT)
 			lprintf("peerlist6: %s: %s", file, strerror(errno));
 	}
+
+	banlist_init();
 
 	peerlist_bootstrap();
 }
@@ -203,8 +234,7 @@ __peerlist_request_tick(event_info_t *info, event_flags_t eventtype)
 {
 	__peerlist_timer = NULL;
 
-	peerlist_bootstrap();
-	peerlist_request_broadcast();
+	//peerlist_request_broadcast();
 }
 
 void
@@ -215,7 +245,6 @@ peerlist_request_broadcast(void)
 	if (__peerlist_timer)
 		return;
 
-	peerlist_bootstrap();
 	message_broadcast(OP_PEERLIST, NULL, 0, 0);
 
 	delay = randombytes_random() % (HOUR_USECONDS / 3);
@@ -262,7 +291,7 @@ peerlist_add(struct sockaddr_storage *addr)
 		break;
 	default:
 		lprintf("peerlist_add: unsupported ss_family: %d",
-		addr->ss_family);
+			addr->ss_family);
 		break;
 	}
 }
@@ -276,6 +305,9 @@ peerlist_add_ipv4(struct in_addr addr)
 	char tmp[INET_ADDRSTRLEN + 1];
 	inet_ntop(AF_INET, &addr, tmp, INET_ADDRSTRLEN);
 #endif
+
+	if (banlist_is_banned_ipv4(addr))
+		return;
 
 	a4.sin_family = AF_INET;
 	a4.sin_addr = addr;
@@ -305,7 +337,7 @@ peerlist_add_ipv4(struct in_addr addr)
 	peerlist.list4[peerlist.list4_size] = addr;
 	peerlist.list4_size++;
 #ifdef DEBUG_PEERLIST
-	lprintf("peerlist_add_ipv4: %s", tmp);
+	lprintf("peerlist_add_ipv4: %s @ %d", tmp, peerlist.list4_size);
 #endif
 }
 
@@ -318,6 +350,9 @@ peerlist_add_ipv6(struct in6_addr addr)
 	char tmp[INET6_ADDRSTRLEN + 1];
 	inet_ntop(AF_INET6, &addr, tmp, INET6_ADDRSTRLEN);
 #endif
+
+	if (banlist_is_banned_ipv6(addr))
+		return;
 
 	bzero(&a6, sizeof(struct sockaddr_in6));
 	a6.sin6_family = AF_INET6;
@@ -349,7 +384,7 @@ peerlist_add_ipv6(struct in6_addr addr)
 	peerlist.list6[peerlist.list6_size] = addr;
 	peerlist.list6_size++;
 #ifdef DEBUG_PEERLIST
-	lprintf("peerlist_add_ipv6: %s", tmp);
+	lprintf("peerlist_add_ipv6: %s @ %d", tmp, peerlist.list6_size);
 #endif
 }
 
@@ -370,12 +405,12 @@ peerlist_remove(struct sockaddr_storage *addr)
 		break;
 	default:
 		lprintf("peerlist_remove: unsupported ss_family: %d",
-		addr->ss_family);
+			addr->ss_family);
 		break;
 	}
 
-	if ((network_is_ipv6_capable() && peerlist.list6_size < 4) ||
-		(!network_is_ipv6_capable() && peerlist.list4_size < 4))
+	if ((!network_is_ipv6_capable() && peerlist.list4_size < 4) ||
+		(network_is_ipv6_capable() && !peerlist.list6_size))
 		peerlist_bootstrap();
 }
 
@@ -468,4 +503,173 @@ peerlist_address_random(struct sockaddr_storage *addr)
 	}
 
 	return (TRUE);
+}
+
+static void
+banlist_init(void)
+{
+	if (banlist.list4)
+		free(banlist.list4);
+	if (banlist.list6)
+		free(banlist.list6);
+
+	banlist.list4_size = 0;
+	banlist.list6_size = 0;
+	banlist.list4 = malloc(100 * sizeof(struct in_addr));
+	banlist.list6 = malloc(100 * sizeof(struct in6_addr));
+}
+
+static void
+banlist_add_ipv4(struct in_addr addr)
+{
+	size_t slen;
+	time64_t now;
+
+	now = time(NULL);
+
+	slen = sizeof(struct in_addr);
+	for (size_t i = 0; i < banlist.list4_size; i++) {
+		if (memcmp(&banlist.list4[i].addr, &addr, slen) == 0) {
+			banlist.list4[i].time = now;
+			return;
+		}
+	}
+
+	if (banlist.list4_size % 100 == 0)
+		banlist.list4 = realloc(banlist.list4,
+			(banlist.list4_size + 100) * slen);
+
+	banlist.list4[banlist.list4_size].time = now;
+	banlist.list4[banlist.list4_size].addr = addr;
+	banlist.list4_size++;
+}
+
+static void
+banlist_add_ipv6(struct in6_addr addr)
+{
+	size_t slen;
+	time64_t now;
+
+	now = time(NULL);
+
+	slen = sizeof(struct in6_addr);
+	for (size_t i = 0; i < banlist.list6_size; i++) {
+		if (memcmp(&banlist.list6[i].addr, &addr, slen) == 0) {
+			banlist.list6[i].time = now;
+			return;
+		}
+	}
+
+	if (banlist.list6_size % 100 == 0)
+		banlist.list6 = realloc(banlist.list6,
+			(banlist.list6_size + 100) * slen);
+
+	banlist.list6[banlist.list6_size].time = now;
+	banlist.list6[banlist.list6_size].addr = addr;
+	banlist.list6_size++;
+}
+
+void
+peerlist_ban(struct sockaddr_storage *addr)
+{
+	struct sockaddr_in *a4;
+	struct sockaddr_in6 *a6;
+
+	peerlist_remove(addr);
+	lprintf("peer %s has been banned", peername(addr));
+
+	switch (addr->ss_family) {
+	case AF_INET:
+		a4 = (struct sockaddr_in *)addr;
+		banlist_add_ipv4(a4->sin_addr);
+		break;
+	case AF_INET6:
+		a6 = (struct sockaddr_in6 *)addr;
+		banlist_add_ipv6(a6->sin6_addr);
+		break;
+	default:
+		lprintf("peerlist_ban: unsupported ss_family: %d",
+			addr->ss_family);
+		break;
+	}
+}
+
+static int
+banlist_is_banned_ipv4(struct in_addr addr)
+{
+	int res = FALSE;
+	size_t slen, sz;
+	time64_t expired;
+
+	expired = time(NULL) - (2 * DAY_SECONDS);
+
+	slen = sizeof(struct in_addr);
+
+	for (size_t i = 0; i < banlist.list4_size; i++) {
+		if (banlist.list4[i].time < expired) {
+			sz = sizeof(ban_ipv4_t) * (banlist.list4_size - i - 1);
+			bcopy(banlist.list4 + 1, banlist.list4, sz);
+			banlist.list4_size--;
+			i--;
+		} else if (memcmp(&banlist.list4[i].addr, &addr, slen) == 0) {
+			res = TRUE;
+		}
+	}
+
+	return (res);
+}
+
+static int
+banlist_is_banned_ipv6(struct in6_addr addr)
+{
+	int res = FALSE;
+	size_t slen, sz;
+	time64_t expired;
+
+	expired = time(NULL) - (2 * DAY_SECONDS);
+
+	slen = sizeof(struct in6_addr);
+
+	for (size_t i = 0; i < banlist.list6_size; i++) {
+		if (banlist.list6[i].time < expired) {
+			sz = sizeof(ban_ipv6_t) * (banlist.list6_size - i - 1);
+			bcopy(banlist.list6 + 1, banlist.list6, sz);
+			banlist.list6_size--;
+			i--;
+		} else if (memcmp(&banlist.list6[i].addr, &addr, slen) == 0) {
+			res = TRUE;
+		}
+	}
+
+	return (res);
+}
+
+int
+banlist_is_banned(struct sockaddr_storage *addr)
+{
+	struct sockaddr_in *a4;
+	struct sockaddr_in6 *a6;
+
+	switch (addr->ss_family) {
+	case AF_INET:
+		a4 = (struct sockaddr_in *)addr;
+		return banlist_is_banned_ipv4(a4->sin_addr);
+		break;
+	case AF_INET6:
+		a6 = (struct sockaddr_in6 *)addr;
+		return banlist_is_banned_ipv6(a6->sin6_addr);
+		break;
+	default:
+		lprintf("peerlist_ban: unsupported ss_family: %d",
+			addr->ss_family);
+		break;
+	}
+
+	return (FALSE);
+}
+
+void
+banlist_reset(void)
+{
+	banlist_init();
 }

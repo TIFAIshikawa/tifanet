@@ -451,7 +451,6 @@ pact_delay(raw_pact_t *rt, int nesting)
 		tx = (void *)tx + sizeof(pact_tx_t);
 	}
 
-return 0;
 	return (res / 5);
 }
 

@@ -56,11 +56,8 @@ static big_idx_t __notars_last_block_idx = 0;
 
 static public_key_t *__pending_notars = NULL;
 
-static event_info_t *__notar_timer = NULL;
 static event_info_t *__notar_announce_timer = NULL;
 
-static void notar_tick(event_info_t *info, event_flags_t eventtype);
-static void schedule_generate_block_retry(void);
 static void notar_pending_remove(public_key_t new_notar);
 static big_idx_t notar_elect_raw_block(big_idx_t raw_block_idx);
 static void *notar_block0(void);
@@ -99,8 +96,20 @@ node_is_notar(void)
 int
 notar_should_generate_block(void)
 {
+	small_idx_t sz;
+	time64_t now, last, diff;
+
+	now = time(NULL);
+	last = block_time(raw_block_last(NULL));
+	if (last >= now)
+		diff = 0;
+	else
+		diff = now - last;
+	pacts_pending(&sz);
+
 	return (config_is_notar_node() && __is_notar &&
-		pubkey_equals(__notars[__next_notar_idx], node_public_key()));
+		pubkey_equals(__notars[__next_notar_idx], node_public_key()) &&
+		(sz >= 2 || diff >= 2));
 }
 
 static void
@@ -208,24 +217,6 @@ notar_remove(public_key_t remove_notar)
 	bzero(__notars[i], sizeof(public_key_t));
 }
 
-static void
-notar_tick(event_info_t *info, event_flags_t eventtype)
-{
-	__notar_timer = NULL;
-
-	if (notar_should_generate_block())
-		block_generate_next();
-}
-
-static void
-schedule_generate_block_retry(void)
-{
-	if (__notar_timer)
-		return;
-
-	__notar_timer = timer_set(BLOCK_EMPTY_DELAY_USECONDS, notar_tick, NULL);
-}
-
 static big_idx_t
 notar_elect_raw_block(big_idx_t raw_block_idx)
 {
@@ -264,12 +255,9 @@ notar_elect_next(void)
 	lprintf("-----");
 #endif
 
-	if (notar_should_generate_block() && !blockchain_is_updating()) {
-		if (!has_pending_pacts())
-			schedule_generate_block_retry();
-		else
-			block_generate_next();
-	}
+	if (notar_should_generate_block() && has_pending_pacts() &&
+		!blockchain_is_updating())
+		block_generate_next();
 }
 
 static void *
@@ -292,22 +280,28 @@ notar_denounce_emergency_node(void)
 void *
 notar_denounce_node(big_idx_t node_idx)
 {
-	void *denounce_node;
-	big_idx_t block_idx;
 	raw_block_t *rb;
-	big_idx_t idx;
+	big_idx_t idx, i;
+	void *not_node, *deno_node;
+
+	if (node_idx > 1)
+		FAIL(EX_SOFTWARE, "notar_denounce_node: illegal node_idx: %ju",
+			node_idx);
 
 	if ((idx = block_idx_last()) < 2)
 		return (notar_denounce_emergency_node());
 
-	denounce_node = notar_next();
+	rb = block_load(idx, NULL);
+	not_node = deno_node = rb->notar;
 
-	block_idx = block_idx_last() - node_idx;
-
-	for (big_idx_t i = block_idx; i > 0; i--) {
-		rb = block_load(i, NULL);
-		if (!pubkey_equals(rb->notar, denounce_node))
-			return (rb->notar);
+	for (i = 0; idx > 0; idx--) {
+		rb = block_load(idx, NULL);
+		if (!pubkey_equals(rb->notar, not_node) &&
+			!pubkey_equals(rb->notar, deno_node)) {
+			if (i == node_idx)
+				return (rb->notar);
+			not_node = rb->notar;
+		}
 	}
 
 	return (notar_denounce_emergency_node());

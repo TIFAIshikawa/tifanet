@@ -163,7 +163,6 @@ event_add(int fd, event_flags_t eventflags, event_callback_t callback,
 {
 	event_info_t *res;
 
-//lprintf("+EVENT fd=%ld payload=%p size=%ld", fd, payload, payload_size);
 	res = event_info_alloc(fd, callback, payload, payload_size);
 	res->flags = eventflags;
 
@@ -324,7 +323,6 @@ event_remove(event_info_t *info)
 {
 	if (info->flags & EVENT_TIMER)
 		FAIL(EX_SOFTWARE, "event_remove: info %p is a timer", info);
-//lprintf("-EVENT fd=%ld", info->ident);
 	if (info->on_close)
 		info->on_close(info, 0);
 	close(info->ident);

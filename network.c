@@ -59,6 +59,9 @@ char *__network = "beta";
 char *__network = "gamma";
 #endif
 
+#define MESSAGE_TIMEOUT 30
+#define CONNECT_TIMEOUT 2
+
 const char *const opcode_names[OP_MAXOPCODE] = {
 	"OP_NONE",
 	"OP_PEERLIST",
@@ -256,6 +259,11 @@ accept_connection(event_info_t *info, event_flags_t eventtype)
 		FAIL(EX_TEMPFAIL, "accept_connection: accept: %s",
 				  strerror(errno));
 
+	if (banlist_is_banned(&addr)) {
+		close(fd);
+		return;
+	}
+
 	socket_set_async(fd);
 
 	socket_set_timeout(fd, 10);
@@ -289,11 +297,13 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 
 	block_transit_message_remove(msg);
 
+/*
 	if (memcmp(msg->magic, TIFA_IDENT, sizeof(TIFA_IDENT)) != 0 &&
 		!msg->userinfo &&
 		((nev->type == NETWORK_EVENT_TYPE_SERVER && !nev->write_idx) ||
 		 (nev->type == NETWORK_EVENT_TYPE_CLIENT && !nev->read_idx)))
 		peerlist_remove(&nev->remote_addr);
+*/
 
 	if (nev->on_close)
 		nev->on_close(info, flags);
@@ -324,13 +334,39 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 static int
 message_event_timeout_check(event_info_t *info, time64_t timeout)
 {
-	return (timeout > 30);
+//#ifdef DEBUG_NETWORK
+	if (timeout > MESSAGE_TIMEOUT)
+		lprintf("message_event_timeout_check: %s: timeout after "
+			"%d seconds",
+			peername(&network_event(info)->remote_addr),
+			MESSAGE_TIMEOUT);
+//#endif
+	if (timeout <= MESSAGE_TIMEOUT)
+		return (FALSE);
+
+lprintf("REMOVING %s due to timeout M!", peername(&network_event(info)->remote_addr));
+	peerlist_remove(&network_event(info)->remote_addr);
+
+	return (TRUE);
 }
 
 static int
 message_event_connect_timeout_check(event_info_t *info, time64_t timeout)
 {
-	return (timeout > 2);
+//#ifdef DEBUG_NETWORK
+	if (timeout > CONNECT_TIMEOUT)
+		lprintf("message_event_connect_timeout_check: %s: timeout "
+			"after %d seconds",
+			peername(&network_event(info)->remote_addr),
+			CONNECT_TIMEOUT);
+//#endif
+	if (timeout <= CONNECT_TIMEOUT)
+		return (FALSE);
+
+lprintf("REMOVING %s due to timeout C!", peername(&network_event(info)->remote_addr));
+	peerlist_remove(&network_event(info)->remote_addr);
+
+	return (TRUE);
 }
 
 static int
@@ -365,7 +401,7 @@ message_header_validate(event_info_t *info)
 	}
 #ifdef DEBUG_NETWORK
 	if (nev->type == NETWORK_EVENT_TYPE_SERVER)
-		lprintf("msg(%s %lld %ld) <- %s",
+		lprintf("msg(fd=%d op=%s us=%lld sz=%ld) <- %s", info->ident,
 			opcode_names[msg->opcode], be64toh(msg->userinfo),
 			size, peername(&nev->remote_addr));
 #endif
@@ -405,7 +441,10 @@ message_read(event_info_t *info, event_flags_t eventtype)
 			if (opcode_message_ignore(info))
 				return message_cancel(info);
 
-			nev->userdata = malloc(be32toh(msg->payload_size));
+			if (msg->payload_size)
+				nev->userdata = malloc(be32toh(msg->payload_size));
+			else
+				nev->userdata = NULL;
 #ifdef DEBUG_ALLOC
 			lprintf("+USERDATA %p MESSAGE_READ", nev->userdata);
 #endif
@@ -597,7 +636,7 @@ message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 
 	if ((res = request_send(addr, &msg, payload))) {
 #ifdef DEBUG_NETWORK
-		lprintf("msg(%s %lld %ld) -> %s",
+		lprintf("msg(fd=%d op=%s us=%lld sz=%ld) -> %s", res->ident,
 			opcode_names[opcode], be64toh(info), size,
 			peername(addr));
 #endif

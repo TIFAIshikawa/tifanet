@@ -89,6 +89,7 @@
 
 #define MINUTE_USECONDS 60000
 #define HOUR_USECONDS 3600000
+#define DAY_SECONDS 86400
 
 extern char *__network;
 
