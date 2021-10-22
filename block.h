@@ -72,7 +72,6 @@ typedef struct __attribute__((__packed__)) __block {
 	small_idx_t num_pacts;
 	public_key_t new_notar;
 	pact_t **pacts;
-	ban_message_t **banned_notars;
 } block_t;
 
 typedef struct __attribute__((__packed__)) __raw_block_timeout {
@@ -98,9 +97,6 @@ extern void block_pacts_add(block_t *block, pact_t **pacts,
 	small_idx_t num_pacts);
 extern void block_pact_add(block_t *block, pact_t *pact);
 
-extern uint8_t *public_key_find_by_rx_idx(raw_block_t *block,
-	small_idx_t rx_idx);
-
 extern void raw_block_hash(raw_block_t *block, size_t size, hash_t result);
 
 extern void block_generate_next(void);
@@ -119,6 +115,7 @@ extern void block_free(block_t *block);
 
 extern void *raw_block_new_notar(raw_block_t *raw_block);
 extern raw_pact_t *raw_block_pacts(raw_block_t *block);
+extern pact_rx_t *pact_rx_by_rx_idx(big_idx_t idx, small_idx_t rx_idx);
 extern raw_pact_t *pact_for_rx_idx(raw_block_t *block, small_idx_t rx_idx);
 
 extern void raw_block_print(raw_block_t *raw_block);

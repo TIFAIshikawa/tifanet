@@ -44,6 +44,11 @@ static rxcache_t *__rxcache = NULL;
 static big_idx_t __rxcache_size = 0;
 static big_idx_t __rxcache_last_block_idx = 0;
 
+static int rxcache_compare(const void *v1, const void *v2);
+static void rxcache_add(big_idx_t block_idx, small_idx_t block_rx_idx,
+	pact_rx_t *rx);
+static void rxcache_remove(big_idx_t block_idx, small_idx_t block_rx_idx);
+
 static int
 rxcache_compare(const void *v1, const void *v2)
 {
@@ -118,11 +123,19 @@ rxcache_add(big_idx_t block_idx, small_idx_t block_rx_idx, pact_rx_t *rx)
 		}
 	}
 
-	__rxcache = realloc(__rxcache, sizeof(rxcache_t) * (__rxcache_size + 100));
+	__rxcache = realloc(__rxcache,
+		sizeof(rxcache_t) * (__rxcache_size + 100));
 #ifdef DEBUG_ALLOC
 	lprintf("*RXCACHE %p", __rxcache);
 #endif
-	bzero(__rxcache + sizeof(rxcache_t) * __rxcache_size, sizeof(rxcache_t) * 100);
+	bzero(__rxcache + sizeof(rxcache_t) * __rxcache_size,
+		sizeof(rxcache_t) * 100);
+
+	item = &__rxcache[__rxcache_size];
+	item->block_idx = block_idx;
+	item->block_rx_idx = block_rx_idx;
+	bcopy(rx, &item->rx, sizeof(pact_rx_t));
+
 	__rxcache_size += 100;
 }
 
@@ -177,12 +190,6 @@ rxcache_for_idxs(big_idx_t block_idx, small_idx_t block_rx_idx)
 	return (NULL);
 }
 
-int
-rxcache_exists(big_idx_t block_idx, small_idx_t block_rx_idx)
-{
-	return (rxcache_for_idxs(block_idx, block_rx_idx) != NULL);
-}
-
 void
 rxcache_remove(big_idx_t block_idx, small_idx_t block_rx_idx)
 {
@@ -199,8 +206,8 @@ rxcache_remove(big_idx_t block_idx, small_idx_t block_rx_idx)
 		}
 	}
 
-	//FAIL(EX_SOFTWARE, "rxcache_remove: block_idx %ju, block_rx_idx %u doesn't exist in cache!", block_idx, block_rx_idx);
-	lprintf("rxcache_remove: block_idx %ju, block_rx_idx %u doesn't exist in cache!", be64toh(block_idx), be16toh(block_rx_idx));
+	FAIL(EX_SOFTWARE, "rxcache_remove: block_idx %ju, block_rx_idx %u "
+		"doesn't exist in cache!", block_idx, block_rx_idx);
 }
 
 void
@@ -261,6 +268,48 @@ rxcache_raw_block_add(raw_block_t *raw_block)
 		rx = pact_rx_ptr(t);
 		for (small_idx_t ti = 0; ti < nrx; ti++) {
 			rxcache_add(htobe64(idx), htobe32(rxidx), rx);
+			rx = (void *)rx + sizeof(pact_rx_t);
+			rxidx++;
+		}
+		t = (void *)rx;
+	}
+
+	qsort(__rxcache, __rxcache_size, sizeof(rxcache_t), rxcache_compare);
+
+	if ((block_idx(raw_block) % CACHE_HASH_BLOCK_INTERVAL) == 0)
+		rxcache_save(raw_block->index);
+}
+
+void
+rxcache_raw_block_rewind(raw_block_t *raw_block)
+{
+	pact_tx_t *tx;
+	big_idx_t idx;
+	raw_pact_t *t;
+	pact_rx_t *rx, *ox;
+	small_idx_t nt, ntx, nrx, rxidx;
+
+	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
+		return;
+
+	idx = block_idx(raw_block);
+
+	rxidx = 0;
+	nt = num_pacts(raw_block);
+	t = raw_block_pacts(raw_block);
+	
+	for (small_idx_t it = 0; it < nt; it++) {
+		ntx = pact_num_tx(t);
+		nrx = pact_num_rx(t);
+		tx = (void *)t + sizeof(raw_pact_t);
+		for (small_idx_t ri = 0; ri < ntx; ri++) {
+			ox = pact_rx_by_rx_idx(tx->block_idx, tx->block_rx_idx);
+			rxcache_add(tx->block_idx, tx->block_rx_idx, ox);
+			tx = (void *)tx + sizeof(pact_tx_t);
+		}
+		rx = pact_rx_ptr(t);
+		for (small_idx_t ti = 0; ti < nrx; ti++) {
+			rxcache_remove(htobe64(idx), htobe32(rxidx));
 			rx = (void *)rx + sizeof(pact_rx_t);
 			rxidx++;
 		}

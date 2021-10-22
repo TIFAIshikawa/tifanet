@@ -91,6 +91,7 @@ extern int pact_delay(raw_pact_t *rt, int nesting);
 
 extern int pacts_overlap(raw_pact_t *t1, raw_pact_t *t2);
 
+
 inline static small_idx_t
 pact_num_tx(raw_pact_t *raw_pact)
 {

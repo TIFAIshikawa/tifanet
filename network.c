@@ -65,7 +65,7 @@ char *__network = "gamma";
 const char *const opcode_names[OP_MAXOPCODE] = {
 	"OP_NONE",
 	"OP_PEERLIST",
-	"OP_LASTBLOCKINFO",
+	"OP_BLOCKINFO",
 	"OP_GETBLOCK",
 	"OP_NOTARANNOUNCE",
 	"OP_NOTARDENOUNCE",
@@ -297,14 +297,6 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 
 	block_transit_message_remove(msg);
 
-/*
-	if (memcmp(msg->magic, TIFA_IDENT, sizeof(TIFA_IDENT)) != 0 &&
-		!msg->userinfo &&
-		((nev->type == NETWORK_EVENT_TYPE_SERVER && !nev->write_idx) ||
-		 (nev->type == NETWORK_EVENT_TYPE_CLIENT && !nev->read_idx)))
-		peerlist_remove(&nev->remote_addr);
-*/
-
 	if (nev->on_close)
 		nev->on_close(info, flags);
 
@@ -334,17 +326,16 @@ message_event_on_close(event_info_t *info, event_flags_t flags)
 static int
 message_event_timeout_check(event_info_t *info, time64_t timeout)
 {
-//#ifdef DEBUG_NETWORK
+#ifdef DEBUG_NETWORK
 	if (timeout > MESSAGE_TIMEOUT)
 		lprintf("message_event_timeout_check: %s: timeout after "
 			"%d seconds",
 			peername(&network_event(info)->remote_addr),
 			MESSAGE_TIMEOUT);
-//#endif
+#endif
 	if (timeout <= MESSAGE_TIMEOUT)
 		return (FALSE);
 
-lprintf("REMOVING %s due to timeout M!", peername(&network_event(info)->remote_addr));
 	peerlist_remove(&network_event(info)->remote_addr);
 
 	return (TRUE);
@@ -353,17 +344,16 @@ lprintf("REMOVING %s due to timeout M!", peername(&network_event(info)->remote_a
 static int
 message_event_connect_timeout_check(event_info_t *info, time64_t timeout)
 {
-//#ifdef DEBUG_NETWORK
+#ifdef DEBUG_NETWORK
 	if (timeout > CONNECT_TIMEOUT)
 		lprintf("message_event_connect_timeout_check: %s: timeout "
 			"after %d seconds",
 			peername(&network_event(info)->remote_addr),
 			CONNECT_TIMEOUT);
-//#endif
+#endif
 	if (timeout <= CONNECT_TIMEOUT)
 		return (FALSE);
 
-lprintf("REMOVING %s due to timeout C!", peername(&network_event(info)->remote_addr));
 	peerlist_remove(&network_event(info)->remote_addr);
 
 	return (TRUE);

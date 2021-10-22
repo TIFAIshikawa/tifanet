@@ -45,7 +45,7 @@ enum opcodes {
 
 	OP_PEERLIST,			// Get list of peers.
 
-	OP_LASTBLOCKINFO,		// Get last block index.
+	OP_BLOCKINFO,			// Get block info.
 	OP_GETBLOCK,			// Get block X, potentially receiving
 					// blocks X .. X + 1500
 
@@ -84,14 +84,6 @@ typedef struct __attribute__((__packed__)) __message {
 	userinfo_t userinfo;
 	small_idx_t payload_size;
 } message_t;
-
-typedef struct __ban_message {
-	time64_t time;
-	public_key_t node_key;
-	signature_t signature;
-	public_key_t banned_node_key;
-	message_t *ban_reason;
-} ban_message_t;
 
 enum {
 	NETWORK_EVENT_STATE_HEADER,

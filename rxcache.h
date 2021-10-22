@@ -50,12 +50,10 @@ extern void rxcache_save(big_idx_t block_idx);
 extern void rxcache_reset(void);
 
 extern void rxcache_raw_block_add(raw_block_t *raw_block);
+extern void rxcache_raw_block_rewind(raw_block_t *raw_block);
 
 extern rxcache_t **rxcaches_for_address(address_t *address, size_t *amount);
 extern rxcache_t *rxcache_for_idxs(big_idx_t block_idx, small_idx_t block_rx_idx);
-
-extern int rxcache_exists(big_idx_t block_idx, small_idx_t block_rx_idx);
-extern void rxcache_remove(big_idx_t block_idx, small_idx_t block_rx_idx);
 
 extern amount_t public_key_balance(public_key_t address);
 

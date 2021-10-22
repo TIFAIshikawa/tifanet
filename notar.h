@@ -41,6 +41,7 @@ extern uint8_t *notar_next(void);		// returned is a public_key_t
 extern int notar_exists(public_key_t notar);
 
 extern void notar_raw_block_add(raw_block_t *raw_block);
+extern void notar_raw_block_rewind(raw_block_t *raw_block);
 
 extern void notar_pending_add(public_key_t new_notar);
 extern uint8_t *notar_pending_next(void);

@@ -69,7 +69,8 @@
 #define BLOCK_REWIND_INTERVAL 100
 
 #define DNS_VERIFY_CHANCE 60
-#define LASTBLOCK_CHECK_CHANCE 85
+#define LAST_BLOCK_CHECK_CHANCE 85
+#define RANDOM_BLOCK_CHECK_CHANCE 85
 
 typedef struct __block_storage {
 	void *blocks;
@@ -106,6 +107,8 @@ static void raw_block_timeout_fprint(FILE *f, raw_block_timeout_t *raw_block);
 static void block_transit_messages_cleanup(void);
 static raw_block_t *raw_block_future_get(big_idx_t idx);
 static void raw_block_future_free(raw_block_t *rb);
+
+static void blockchain_rewind(big_idx_t to_idx);
 
 static int __dns_txt_request(char *request, char *response, size_t size);
 
@@ -283,17 +286,56 @@ blockchain_load(void)
 	blockchain_storage_load();
 }
 
+static void
+blockchain_rewind(big_idx_t to_idx)
+{
+	raw_block_t *block;
+	block_storage_t *bs;
+	big_idx_t curr_idx, sidx, count;
+
+	curr_idx = block_idx_last();
+
+	// fix caches
+	for (big_idx_t i = curr_idx; i > to_idx; i--) {
+		block = block_load(i, NULL);
+		notar_raw_block_rewind(block);
+		rxcache_raw_block_rewind(block);
+	}
+
+	// fix block storage
+	for (size_t i = __num_block_storages - 1; i >= 0; i--) {
+		if (!(bs = __block_storage[i]))
+			continue;
+		if (bs->first_block_idx > to_idx) {
+			// obliterate
+			munmap(bs->blocks, BLOCKS_FILESIZE_MAX);
+			munmap(bs->block_idxs, BLOCK_IDX_FILESIZE_MAX);
+			free(bs);
+			__block_storage[i] = NULL;
+		} else if (bs->last_block_idx > to_idx) {
+			// trim to to_idx
+			count = bs->last_block_idx - to_idx;
+			sidx = to_idx - bs->first_block_idx;
+			bzero(bs->block_idxs + sidx, sizeof(big_idx_t) * count);
+			block_last_load();
+		} else if (bs->last_block_idx < to_idx)
+			break;
+	}
+}
+
 static void *
 raw_block_last_load(size_t *blocksize)
 {
 	big_idx_t last_offset;
+	block_storage_t *bs;
 	raw_block_t *rb;
 	big_idx_t lbi;
 
-	lbi = __block_storage_current->last_block_idx;
-	last_offset = __block_storage_current->block_idxs[lbi];
+	bs = __block_storage_current;
+	lbi = bs->last_block_idx - bs->first_block_idx;
+	last_offset = bs->block_idxs[lbi];
 
-	rb = (raw_block_t *)(__block_storage_current->blocks + last_offset);
+	rb = (raw_block_t *)(bs->blocks + last_offset);
 	if (blocksize)
 		*blocksize = raw_block_size(rb, 0);
 
@@ -1190,13 +1232,16 @@ block_finalize(block_t *block, size_t *blocksize)
 	return (res);
 }
 
-uint8_t *
-public_key_find_by_rx_idx(raw_block_t *block, small_idx_t rx_idx)
+pact_rx_t *
+pact_rx_by_rx_idx(big_idx_t block_idx, small_idx_t rx_idx)
 {
 	void *buf;
 	raw_pact_t *t;
+	raw_block_t *block;
 	small_idx_t nrx = 0;
 
+	rx_idx = be16toh(rx_idx);
+	block = block_load(be64toh(block_idx), NULL);
 	buf = raw_block_pacts(block);
 	for (small_idx_t ti = 0; ti < num_pacts(block); ti++) {
 		t = (void *)buf;
@@ -1209,7 +1254,7 @@ public_key_find_by_rx_idx(raw_block_t *block, small_idx_t rx_idx)
 		}
 		buf += sizeof(pact_rx_t) * (rx_idx - nrx);
 
-		return ((pact_rx_t *)buf)->address;
+		return ((pact_rx_t *)buf);
 	}
 
 	return (NULL);
@@ -1390,7 +1435,7 @@ raw_block_broadcast(big_idx_t index)
 void
 blockchain_update()
 {
-	if (!message_send_random(OP_LASTBLOCKINFO, NULL, 0, 0)) {
+	if (!message_send_random(OP_BLOCKINFO, NULL, 0, 0)) {
 #ifdef DEBUG_NETWORK
 		lprintf("blockchain_update: failed retrieving last block, "
 			"trying again...");
@@ -1450,24 +1495,17 @@ blocks_remove(void)
 {
 	char path[MAXPATHLEN + 1];
 	struct dirent *dire;
-	char *name;
 	DIR *dirp;
 	int r;
 
 	r = 1;
 	if ((dirp = opendir(config_path("blocks")))) {
-		for (name = NULL; (dire = readdir(dirp));) {
-			if (strcmp(dire->d_name, "lastblock.idx") == 0)
-				name = dire->d_name;
-			if (strncmp(dire->d_name, "blocks", 6) == 0)
-				name = dire->d_name;
-
-			if (name) {
+		while ((dire = readdir(dirp))) {
+			if (strncmp(dire->d_name, "blocks", 6) == 0) {
 				snprintf(path, MAXPATHLEN + 1, "blocks/%s",
-					name);
+					dire->d_name);
 				if (!config_unlink(path))
 					r = 0;
-				name = NULL;
 			}
 		}
 		closedir(dirp);
@@ -1490,13 +1528,18 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 {
 	time64_t t;
 	time64_t last;
+	big_idx_t idx;
 
 	t = time(NULL);
 
 	if (randombytes_random() % (100 - DNS_VERIFY_CHANCE) == 0)
 		blockchain_dns_verify();
-	if (randombytes_random() % (100 - LASTBLOCK_CHECK_CHANCE) == 0)
-		message_broadcast(OP_LASTBLOCKINFO, NULL, 0, 0);
+	if (randombytes_random() % (100 - LAST_BLOCK_CHECK_CHANCE) == 0)
+		message_broadcast(OP_BLOCKINFO, NULL, 0, 0);
+	if (randombytes_random() % (100 - RANDOM_BLOCK_CHECK_CHANCE) == 0) {
+		idx = randombytes_random() % block_idx_last();
+		message_broadcast(OP_BLOCKINFO, NULL, 0, htobe64(idx));
+	}
 
 	if (!blockchain_is_updating()) {
 		if (notar_should_generate_block())
@@ -1691,8 +1734,8 @@ blockchain_dns_verify(void)
 {
 	hash_t bh;
 	size_t sz, bs;
-	char *hashstr;
 	big_idx_t idx;
+	char *hashstr;
 	char dnsreq[256];
 	char txtres[256];
 	raw_block_t *block;
@@ -1748,7 +1791,9 @@ blockchain_dns_verify(void)
 		raw_block_hash(block, bs, bh);
 		if (strcmp(txtres, hash_str(bh)) == 0) {
 			__dns_last_verified = idx;
+#ifdef DEBUG_CHAINCHECK
 			lprintf("block %ju verified with DNS", idx);
+#endif
 			return;
 		}
 	}
@@ -1762,7 +1807,9 @@ blockchain_dns_verify(void)
 	raw_block_hash(block, bs, bh);
 	if (strcmp(hashstr, hash_str(bh)) == 0) {
 		__dns_last_verified = idx;
+#ifdef DEBUG_CHAINCHECK
 		lprintf("block %ju verified with DNS", idx);
+#endif
 		return;
 	}
 
@@ -1770,26 +1817,28 @@ blockchain_dns_verify(void)
 		"DNS! Rewinding to a previous correct point", idx);
 	// hash wasn't the same! now rewind until we find a valid
 	// block index & hash combination.
-	for (; idx > BLOCK_REWIND_INTERVAL; idx -= BLOCK_REWIND_INTERVAL) {
-		if (!(block = block_load(idx, &bs)))
-			continue;
-
-		sz = snprintf(dnsreq, 256, "%ju.blocks.%s.tifa.network",
-			idx, __network);
-		if (!__dns_txt_request(dnsreq, txtres, 256)) {
-			lprintf("blockchain_dns_verify: no valid responses "
-				"found while retrieving %s", dnsreq);
-			continue;
+	idx = __dns_last_verified;
+	if (__dns_last_verified) {
+		idx = __dns_last_verified;
+	} else {
+		for (; idx; idx--) {
+			sz = snprintf(dnsreq, 256, "%ju.blocks.%s.tifa.network",
+				idx, __network);
+			if (!__dns_txt_request(dnsreq, txtres, 256)) {
+				lprintf("blockchain_dns_verify: no valid "
+					"responses found while retrieving %s",
+					dnsreq);
+				continue;
+			}
+	
+			raw_block_hash(block, bs, bh);
+			if (strcmp(txtres, hash_str(bh)) == 0)
+				break;
 		}
-
-		raw_block_hash(block, bs, bh);
-		if (strcmp(txtres, hash_str(bh)) == 0)
-			break;
 	}
 
-	if (idx < BLOCK_REWIND_INTERVAL)
-		idx = 0;
+	lprintf("blockchain_dns_verify: last correct block appears to be %ju, "
+		"rewinding", idx);
 
-	lprintf("blockchain_dns_verify: last correct block appears to be %ju",
-		idx);
+	blockchain_rewind(idx);
 }

@@ -56,16 +56,16 @@ typedef struct  __attribute__((__packed__)) __op_peerlist_response {
 	small_idx_t peers_ipv6_count;
 } op_peerlist_response_t;
 
-typedef struct  __attribute__((__packed__)) __op_lastblockinfo_response {
+typedef struct  __attribute__((__packed__)) __op_blockinfo_response {
 	big_idx_t index;
 	hash_t hash;
 	hash_t prev_block_hash;
 	public_key_t notar;
 	signature_t signature;
-} op_lastblockinfo_response_t;
+} op_blockinfo_response_t;
 
 static void op_peerlist(event_info_t *info);
-static void op_lastblockinfo(event_info_t *info);
+static void op_blockinfo(event_info_t *info);
 static void op_getblock(event_info_t *info);
 static void op_notarannounce(event_info_t *info);
 static void op_notardenounce(event_info_t *info);
@@ -78,8 +78,8 @@ static int op_blockannounce_ignore(event_info_t *info);
 
 static void op_peerlist_server(event_info_t *info, network_event_t *nev);
 static void op_peerlist_client(event_info_t *info, network_event_t *nev);
-static void op_lastblockinfo_server(event_info_t *info, network_event_t *nev);
-static void op_lastblockinfo_client(event_info_t *info, network_event_t *nev);
+static void op_blockinfo_server(event_info_t *info, network_event_t *nev);
+static void op_blockinfo_client(event_info_t *info, network_event_t *nev);
 static void op_getblock_server(event_info_t *info, network_event_t *nev);
 static void op_getblock_client(event_info_t *info, network_event_t *nev);
 static void op_pact_server(event_info_t *info, network_event_t *nev);
@@ -89,13 +89,13 @@ static void op_getrxcache_client(event_info_t *info, network_event_t *nev);
 static void op_getnotars_server(event_info_t *info, network_event_t *nev);
 static void op_getnotars_client(event_info_t *info, network_event_t *nev);
 
-static int __verify_lastblockinfo(op_lastblockinfo_response_t *info,
+static int __verify_blockinfo(op_blockinfo_response_t *info,
 	network_event_t *nev);
 
 opcode_ignore_callback_t opcode_ignore_callbacks[OP_MAXOPCODE] = {
 	NULL,			// OP_NONE
 	NULL,			// OP_PEERLIST
-	NULL,			// OP_LASTBLOCKINFO
+	NULL,			// OP_BLOCKINFO
 	NULL,			// OP_GETBLOCK
 	NULL,			// OP_NOTARANNOUNCE
 	NULL,			// OP_NOTARDENOUNCE
@@ -108,7 +108,7 @@ opcode_ignore_callback_t opcode_ignore_callbacks[OP_MAXOPCODE] = {
 opcode_callback_t opcode_callbacks[OP_MAXOPCODE] = {
 	NULL,			// OP_NONE
 	op_peerlist,		// OP_PEERLIST
-	op_lastblockinfo,	// OP_LASTBLOCKINFO
+	op_blockinfo,		// OP_BLOCKINFO
 	op_getblock,		// OP_GETBLOCK
 	op_notarannounce,	// OP_NOTARANNOUNCE
 	op_notardenounce,	// OP_NOTARDENOUNCE
@@ -133,11 +133,11 @@ opcode_payload_size_valid(message_t *msg, int direction)
 			return (be32toh(msg->payload_size) == 0);
 		else
 			return (be32toh(msg->payload_size) >= sizeof(op_peerlist_response_t));
-	case OP_LASTBLOCKINFO:
+	case OP_BLOCKINFO:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (be32toh(msg->payload_size) == 0);
 		else
-			return (be32toh(msg->payload_size) == sizeof(op_lastblockinfo_response_t));
+			return (be32toh(msg->payload_size) == sizeof(op_blockinfo_response_t));
 	case OP_GETBLOCK:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (be32toh(msg->payload_size) == sizeof(big_idx_t));
@@ -290,17 +290,17 @@ op_peerlist_client(event_info_t *info, network_event_t *nev)
 }
 
 static void
-op_lastblockinfo(event_info_t *info)
+op_blockinfo(event_info_t *info)
 {
 	network_event_t *nev;
 	nev = info->payload;
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
-		op_lastblockinfo_server(info, nev);
+		op_blockinfo_server(info, nev);
 		break;
 	case NETWORK_EVENT_TYPE_CLIENT:
-		op_lastblockinfo_client(info, nev);
+		op_blockinfo_client(info, nev);
 		break;
 	default:
 		break;
@@ -308,24 +308,32 @@ op_lastblockinfo(event_info_t *info)
 }
 
 static void
-op_lastblockinfo_server(event_info_t *info, network_event_t *nev)
+op_blockinfo_server(event_info_t *info, network_event_t *nev)
 {
 	size_t size;
+	big_idx_t idx;
 	message_t *msg;
-	raw_block_t *last;
+	raw_block_t *block;
 	hash_t block_hash;
-	op_lastblockinfo_response_t *blockinfo;
+	op_blockinfo_response_t *blockinfo;
 
-	last = raw_block_last(&size);
-	raw_block_hash(last, size, block_hash);
+	msg = network_message(info);
 
-	blockinfo = malloc(sizeof(op_lastblockinfo_response_t));
+	idx = be64toh(msg->userinfo);
+	if (!idx || idx > block_idx_last())
+		block = raw_block_last(&size);
+	else
+		block = block_load(idx, &size);
+
+	raw_block_hash(block, size, block_hash);
+
+	blockinfo = malloc(sizeof(op_blockinfo_response_t));
 #ifdef DEBUG_ALLOC
 	lprintf("+USERDATA %p BLOCKINFO", blockinfo);
 #endif
-	blockinfo->index = last->index;
+	blockinfo->index = block->index;
 	bcopy(block_hash, blockinfo->hash, sizeof(hash_t));
-	bcopy(last->prev_block_hash, blockinfo->prev_block_hash,
+	bcopy(block->prev_block_hash, blockinfo->prev_block_hash,
 		sizeof(hash_t));
 
 	nev = info->payload;
@@ -333,9 +341,9 @@ op_lastblockinfo_server(event_info_t *info, network_event_t *nev)
 	nev->read_idx = 0;
 	nev->write_idx = 0;
 	nev->userdata = blockinfo;
-	nev->userdata_size = sizeof(op_lastblockinfo_response_t);
-	msg = network_message(info);
-	msg->payload_size = htobe32(sizeof(op_lastblockinfo_response_t));
+	nev->userdata_size = sizeof(op_blockinfo_response_t);
+
+	msg->payload_size = htobe32(sizeof(op_blockinfo_response_t));
 
 	event_update(info, EVENT_READ, EVENT_WRITE);
 	info->callback = message_write;
@@ -343,7 +351,7 @@ op_lastblockinfo_server(event_info_t *info, network_event_t *nev)
 }
 
 static int
-__verify_lastblockinfo(op_lastblockinfo_response_t *info, network_event_t *nev)
+__verify_blockinfo(op_blockinfo_response_t *info, network_event_t *nev)
 {
 	size_t size;
 	hash_t hash;
@@ -369,32 +377,38 @@ __verify_lastblockinfo(op_lastblockinfo_response_t *info, network_event_t *nev)
 }
 
 static void
-op_lastblockinfo_client(event_info_t *info, network_event_t *nev)
+op_blockinfo_client(event_info_t *info, network_event_t *nev)
 {
+	message_t *msg;
 	big_idx_t lcl_idx, rmt_idx;
-	op_lastblockinfo_response_t *blockinfo;
+	op_blockinfo_response_t *blockinfo;
+
+	msg = network_message(info);
 
 	lcl_idx = block_idx_last();
 
 	blockinfo = nev->userdata;
 	rmt_idx = be64toh(blockinfo->index);
 
-	if (rmt_idx != lcl_idx)
-		lprintf("%s's last block is %ju (our last is %ju)",
-			peername(&nev->remote_addr), rmt_idx, lcl_idx);
+#ifdef DEBUG_CHAINCHECK
+	lprintf("%s's last block is %ju (our last is %ju)",
+		peername(&nev->remote_addr), rmt_idx, lcl_idx);
+#endif
 
 	if (lcl_idx < rmt_idx) {
 		getblocks(rmt_idx);
 		notar_elect_next();
-	} else if (lcl_idx > rmt_idx) {
+	} else {
 		// if the peer gives false information - we think - ,
 		// boycott this peer. DNS verification will prove the
 		// peer either wrong or correct in time
-		if (!__verify_lastblockinfo(blockinfo, nev))
+		if (!__verify_blockinfo(blockinfo, nev))
 			peerlist_ban(&nev->remote_addr);
-
-		daemon_start();
-		notar_elect_next();
+#ifdef DEBUG_CHAINCHECK
+		else
+			lprintf("block is %ju verified with %s", rmt_idx,
+				peername(&nev->remote_addr));
+#endif
 	}
 
 	message_cancel(info);
