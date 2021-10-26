@@ -108,6 +108,7 @@ notar_should_generate_block(void)
 	pacts_pending(&sz);
 
 	return (config_is_notar_node() && __is_notar &&
+		!blockchain_is_updating() &&
 		pubkey_equals(__notars[__next_notar_idx], node_public_key()) &&
 		(sz >= 2 || diff >= 2));
 }

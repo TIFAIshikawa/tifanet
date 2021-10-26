@@ -555,8 +555,11 @@ raw_block_write(raw_block_t *raw_block, size_t blocksize)
 	block_storage_t *bs;
 	size_t bsize, isize;
 	big_idx_t idx;
+	hash_t hash;
 	void *dst;
 
+	raw_block_hash(raw_block, blocksize, hash);
+	lprintf("block(%ju) = %s", block_idx(raw_block), hash_str(hash));
 	if (config_is_caches_only()) {
 		if (__raw_block_last)
 			free(__raw_block_last);
@@ -1339,15 +1342,21 @@ raw_block_print(raw_block_t *raw_block)
 static void
 raw_block_fprint_base(FILE *f, raw_block_t *raw_block)
 {
+	hash_t hash;
 	time_t tm;
+	size_t sz;
 
+	sz = raw_block_size(raw_block, 0);
+	raw_block_hash(raw_block, sz, hash);
 	tm = (time_t)block_time(raw_block);
 	fprintf(f, "---\nresult:\n");
 	fprintf(f, "  index: %ju\n", block_idx(raw_block));
 	fprintf(f, "  raw_time: %ju\n", be64toh(raw_block->time));
 	fprintf(f, "  time: %s", ctime(&tm));
-	fprintf(f, "  raw_flags: %ju", be64toh(raw_block->flags));
+	fprintf(f, "  size: %ld\n", sz);
+	fprintf(f, "  hash: %s", hash_str(hash));
 	if (block_flags(raw_block)) {
+		fprintf(f, "\n  raw_flags: %ju", be64toh(raw_block->flags));
 		fprintf(f, "\n  flags:");
 		if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR)
 			fprintf(f, " BLOCK_FLAG_NEW_NOTAR");
@@ -1537,7 +1546,10 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 	if (randombytes_random() % (100 - LAST_BLOCK_CHECK_CHANCE) == 0)
 		message_broadcast(OP_BLOCKINFO, NULL, 0, 0);
 	if (randombytes_random() % (100 - RANDOM_BLOCK_CHECK_CHANCE) == 0) {
-		idx = randombytes_random() % block_idx_last();
+		if (block_idx_last())
+			idx = randombytes_random() % block_idx_last();
+		else
+			idx = 0; // 0 == <last> in this case
 		message_broadcast(OP_BLOCKINFO, NULL, 0, htobe64(idx));
 	}
 
