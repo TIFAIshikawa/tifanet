@@ -1408,11 +1408,11 @@ raw_block_fprint(FILE *f, raw_block_t *raw_block)
 		tx = (void *)t + sizeof(raw_pact_t);
 		fprintf(f, "    - tx:%s\n", tx_num ? "" : " []");
 		for (small_idx_t ri = 0; ri < tx_num; ri++) {
-			fprintf(f, "        - block_idx: %ju\n",
+			fprintf(f, "      - block_idx: %ju\n",
 				be64toh(tx->block_idx));
-			fprintf(f, "          block_rx_idx: %d\n",
+			fprintf(f, "        block_rx_idx: %d\n",
 				be32toh(tx->block_rx_idx));
-			fprintf(f, "          signature: %s\n",
+			fprintf(f, "        signature: %s\n",
 				signature_str(tx->signature));
 			tx = (void *)tx + sizeof(pact_tx_t);
 		}
@@ -1420,8 +1420,8 @@ raw_block_fprint(FILE *f, raw_block_t *raw_block)
 		fprintf(f, "      rx:\n");
 		for (small_idx_t ti = 0; ti < rx_num; ti++) {
 			addr_name = public_key_address_name(rx->address);
-			fprintf(f, "        - address: %s\n", addr_name);
-			fprintf(f, "          amount: %2.2f\n",
+			fprintf(f, "      - address: %s\n", addr_name);
+			fprintf(f, "        amount: %2.2f\n",
 				stoi(be64toh(rx->amount)));
 			rx = (void *)rx + sizeof(pact_rx_t);
 		}
