@@ -149,7 +149,7 @@ mmap_file(char *filename, off_t truncsize)
 		FAILTEMP("open %s: %s\n", file, strerror(errno));
 	ftruncate(fd, truncsize);
 	if ((res = mmap(0, truncsize, PROT_READ | PROT_WRITE,
-#if defined(__linux__) || defined(__APPLE__) || defined(__OpenBSD__)
+#if !defined(__FreeBSD__) && !defined(__DragonFly__)
 		MAP_SHARED,
 #else
 		MAP_SHARED | MAP_NOCORE,
