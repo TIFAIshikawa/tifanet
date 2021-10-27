@@ -65,7 +65,7 @@ typedef struct {
 	size_t list6_size;
 	ban_ipv4_t *list4;
 	ban_ipv6_t *list6;
-} banlist_t;
+} ignorelist_t;
 
 peerlist_t peerlist = {
 	.list4_size = 0,
@@ -74,7 +74,7 @@ peerlist_t peerlist = {
 	.list6 = NULL
 };
 
-banlist_t banlist = {
+ignorelist_t ignorelist = {
 	.list4_size = 0,
 	.list6_size = 0,
 	.list4 = NULL,
@@ -87,11 +87,11 @@ static event_info_t *__peerlist_timer = NULL;
 static event_info_t *__peerlist_save_timer = NULL;
 
 static void peerlist_bootstrap(void);
-static void banlist_init(void);
-static void banlist_add_ipv4(struct in_addr addr);
-static void banlist_add_ipv6(struct in6_addr addr);
-static int banlist_is_banned_ipv4(struct in_addr addr);
-static int banlist_is_banned_ipv6(struct in6_addr addr);
+static void ignorelist_init(void);
+static void ignorelist_add_ipv4(struct in_addr addr);
+static void ignorelist_add_ipv6(struct in6_addr addr);
+static int ignorelist_is_ignored_ipv4(struct in_addr addr);
+static int ignorelist_is_ignored_ipv6(struct in6_addr addr);
 
 static void
 __peerlist_load_entry_sanitize(char *tmp)
@@ -162,7 +162,7 @@ peerlist_load(void)
 			lprintf("peerlist6: %s: %s", file, strerror(errno));
 	}
 
-	banlist_init();
+	ignorelist_init();
 
 	peerlist_bootstrap();
 }
@@ -306,7 +306,7 @@ peerlist_add_ipv4(struct in_addr addr)
 	inet_ntop(AF_INET, &addr, tmp, INET_ADDRSTRLEN);
 #endif
 
-	if (banlist_is_banned_ipv4(addr))
+	if (ignorelist_is_ignored_ipv4(addr))
 		return;
 
 	a4.sin_family = AF_INET;
@@ -351,7 +351,7 @@ peerlist_add_ipv6(struct in6_addr addr)
 	inet_ntop(AF_INET6, &addr, tmp, INET6_ADDRSTRLEN);
 #endif
 
-	if (banlist_is_banned_ipv6(addr))
+	if (ignorelist_is_ignored_ipv6(addr))
 		return;
 
 	bzero(&a6, sizeof(struct sockaddr_in6));
@@ -506,21 +506,21 @@ peerlist_address_random(struct sockaddr_storage *addr)
 }
 
 static void
-banlist_init(void)
+ignorelist_init(void)
 {
-	if (banlist.list4)
-		free(banlist.list4);
-	if (banlist.list6)
-		free(banlist.list6);
+	if (ignorelist.list4)
+		free(ignorelist.list4);
+	if (ignorelist.list6)
+		free(ignorelist.list6);
 
-	banlist.list4_size = 0;
-	banlist.list6_size = 0;
-	banlist.list4 = malloc(100 * sizeof(struct in_addr));
-	banlist.list6 = malloc(100 * sizeof(struct in6_addr));
+	ignorelist.list4_size = 0;
+	ignorelist.list6_size = 0;
+	ignorelist.list4 = malloc(100 * sizeof(struct in_addr));
+	ignorelist.list6 = malloc(100 * sizeof(struct in6_addr));
 }
 
 static void
-banlist_add_ipv4(struct in_addr addr)
+ignorelist_add_ipv4(struct in_addr addr)
 {
 	size_t slen;
 	time64_t now;
@@ -528,24 +528,24 @@ banlist_add_ipv4(struct in_addr addr)
 	now = time(NULL);
 
 	slen = sizeof(struct in_addr);
-	for (size_t i = 0; i < banlist.list4_size; i++) {
-		if (memcmp(&banlist.list4[i].addr, &addr, slen) == 0) {
-			banlist.list4[i].time = now;
+	for (size_t i = 0; i < ignorelist.list4_size; i++) {
+		if (memcmp(&ignorelist.list4[i].addr, &addr, slen) == 0) {
+			ignorelist.list4[i].time = now;
 			return;
 		}
 	}
 
-	if (banlist.list4_size % 100 == 0)
-		banlist.list4 = realloc(banlist.list4,
-			(banlist.list4_size + 100) * slen);
+	if (ignorelist.list4_size % 100 == 0)
+		ignorelist.list4 = realloc(ignorelist.list4,
+			(ignorelist.list4_size + 100) * slen);
 
-	banlist.list4[banlist.list4_size].time = now;
-	banlist.list4[banlist.list4_size].addr = addr;
-	banlist.list4_size++;
+	ignorelist.list4[ignorelist.list4_size].time = now;
+	ignorelist.list4[ignorelist.list4_size].addr = addr;
+	ignorelist.list4_size++;
 }
 
 static void
-banlist_add_ipv6(struct in6_addr addr)
+ignorelist_add_ipv6(struct in6_addr addr)
 {
 	size_t slen;
 	time64_t now;
@@ -553,49 +553,49 @@ banlist_add_ipv6(struct in6_addr addr)
 	now = time(NULL);
 
 	slen = sizeof(struct in6_addr);
-	for (size_t i = 0; i < banlist.list6_size; i++) {
-		if (memcmp(&banlist.list6[i].addr, &addr, slen) == 0) {
-			banlist.list6[i].time = now;
+	for (size_t i = 0; i < ignorelist.list6_size; i++) {
+		if (memcmp(&ignorelist.list6[i].addr, &addr, slen) == 0) {
+			ignorelist.list6[i].time = now;
 			return;
 		}
 	}
 
-	if (banlist.list6_size % 100 == 0)
-		banlist.list6 = realloc(banlist.list6,
-			(banlist.list6_size + 100) * slen);
+	if (ignorelist.list6_size % 100 == 0)
+		ignorelist.list6 = realloc(ignorelist.list6,
+			(ignorelist.list6_size + 100) * slen);
 
-	banlist.list6[banlist.list6_size].time = now;
-	banlist.list6[banlist.list6_size].addr = addr;
-	banlist.list6_size++;
+	ignorelist.list6[ignorelist.list6_size].time = now;
+	ignorelist.list6[ignorelist.list6_size].addr = addr;
+	ignorelist.list6_size++;
 }
 
 void
-peerlist_ban(struct sockaddr_storage *addr)
+peerlist_ignore(struct sockaddr_storage *addr)
 {
 	struct sockaddr_in *a4;
 	struct sockaddr_in6 *a6;
 
 	peerlist_remove(addr);
-	lprintf("peer %s has been banned", peername(addr));
+	lprintf("peer %s has been ignored", peername(addr));
 
 	switch (addr->ss_family) {
 	case AF_INET:
 		a4 = (struct sockaddr_in *)addr;
-		banlist_add_ipv4(a4->sin_addr);
+		ignorelist_add_ipv4(a4->sin_addr);
 		break;
 	case AF_INET6:
 		a6 = (struct sockaddr_in6 *)addr;
-		banlist_add_ipv6(a6->sin6_addr);
+		ignorelist_add_ipv6(a6->sin6_addr);
 		break;
 	default:
-		lprintf("peerlist_ban: unsupported ss_family: %d",
+		lprintf("peerlist_ignore: unsupported ss_family: %d",
 			addr->ss_family);
 		break;
 	}
 }
 
 static int
-banlist_is_banned_ipv4(struct in_addr addr)
+ignorelist_is_ignored_ipv4(struct in_addr addr)
 {
 	int res = FALSE;
 	size_t slen, sz;
@@ -605,13 +605,13 @@ banlist_is_banned_ipv4(struct in_addr addr)
 
 	slen = sizeof(struct in_addr);
 
-	for (size_t i = 0; i < banlist.list4_size; i++) {
-		if (banlist.list4[i].time < expired) {
-			sz = sizeof(ban_ipv4_t) * (banlist.list4_size - i - 1);
-			bcopy(banlist.list4 + 1, banlist.list4, sz);
-			banlist.list4_size--;
+	for (size_t i = 0; i < ignorelist.list4_size; i++) {
+		if (ignorelist.list4[i].time < expired) {
+			sz = sizeof(ban_ipv4_t) * (ignorelist.list4_size - i - 1);
+			bcopy(ignorelist.list4 + 1, ignorelist.list4, sz);
+			ignorelist.list4_size--;
 			i--;
-		} else if (memcmp(&banlist.list4[i].addr, &addr, slen) == 0) {
+		} else if (memcmp(&ignorelist.list4[i].addr, &addr, slen) == 0) {
 			res = TRUE;
 		}
 	}
@@ -620,7 +620,7 @@ banlist_is_banned_ipv4(struct in_addr addr)
 }
 
 static int
-banlist_is_banned_ipv6(struct in6_addr addr)
+ignorelist_is_ignored_ipv6(struct in6_addr addr)
 {
 	int res = FALSE;
 	size_t slen, sz;
@@ -630,13 +630,13 @@ banlist_is_banned_ipv6(struct in6_addr addr)
 
 	slen = sizeof(struct in6_addr);
 
-	for (size_t i = 0; i < banlist.list6_size; i++) {
-		if (banlist.list6[i].time < expired) {
-			sz = sizeof(ban_ipv6_t) * (banlist.list6_size - i - 1);
-			bcopy(banlist.list6 + 1, banlist.list6, sz);
-			banlist.list6_size--;
+	for (size_t i = 0; i < ignorelist.list6_size; i++) {
+		if (ignorelist.list6[i].time < expired) {
+			sz = sizeof(ban_ipv6_t) * (ignorelist.list6_size - i - 1);
+			bcopy(ignorelist.list6 + 1, ignorelist.list6, sz);
+			ignorelist.list6_size--;
 			i--;
-		} else if (memcmp(&banlist.list6[i].addr, &addr, slen) == 0) {
+		} else if (memcmp(&ignorelist.list6[i].addr, &addr, slen) == 0) {
 			res = TRUE;
 		}
 	}
@@ -645,7 +645,7 @@ banlist_is_banned_ipv6(struct in6_addr addr)
 }
 
 int
-banlist_is_banned(struct sockaddr_storage *addr)
+ignorelist_is_ignored(struct sockaddr_storage *addr)
 {
 	struct sockaddr_in *a4;
 	struct sockaddr_in6 *a6;
@@ -653,14 +653,14 @@ banlist_is_banned(struct sockaddr_storage *addr)
 	switch (addr->ss_family) {
 	case AF_INET:
 		a4 = (struct sockaddr_in *)addr;
-		return banlist_is_banned_ipv4(a4->sin_addr);
+		return ignorelist_is_ignored_ipv4(a4->sin_addr);
 		break;
 	case AF_INET6:
 		a6 = (struct sockaddr_in6 *)addr;
-		return banlist_is_banned_ipv6(a6->sin6_addr);
+		return ignorelist_is_ignored_ipv6(a6->sin6_addr);
 		break;
 	default:
-		lprintf("peerlist_ban: unsupported ss_family: %d",
+		lprintf("peerlist_ignore: unsupported ss_family: %d",
 			addr->ss_family);
 		break;
 	}
@@ -669,7 +669,7 @@ banlist_is_banned(struct sockaddr_storage *addr)
 }
 
 void
-banlist_reset(void)
+ignorelist_reset(void)
 {
-	banlist_init();
+	ignorelist_init();
 }

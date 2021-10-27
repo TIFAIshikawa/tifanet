@@ -259,10 +259,10 @@ accept_connection(event_info_t *info, event_flags_t eventtype)
 		FAIL(EX_TEMPFAIL, "accept_connection: accept: %s",
 				  strerror(errno));
 
-	if (banlist_is_banned(&addr)) {
-		close(fd);
-		return;
-	}
+//	if (banlist_is_banned(&addr)) {
+//		close(fd);
+//		return;
+//	}
 
 	socket_set_async(fd);
 

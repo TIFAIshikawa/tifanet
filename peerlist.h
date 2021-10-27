@@ -56,9 +56,9 @@ extern void peerlist_remove(struct sockaddr_storage *addr);
 extern void peerlist_remove_ipv4(struct in_addr addr);
 extern void peerlist_remove_ipv6(struct in6_addr addr);
 
-extern void peerlist_ban(struct sockaddr_storage *addr);
-extern int banlist_is_banned(struct sockaddr_storage *addr);
-extern void banlist_reset(void);
+extern void peerlist_ignore(struct sockaddr_storage *addr);
+extern int ignorelist_is_ignored(struct sockaddr_storage *addr);
+extern void ignorelist_reset(void);
 
 extern void peerlist_request_broadcast(void);
 

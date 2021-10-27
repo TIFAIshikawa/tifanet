@@ -111,17 +111,21 @@ static void
 rxcache_add(big_idx_t block_idx, small_idx_t block_rx_idx, pact_rx_t *rx)
 {
 	rxcache_t *item;
+	big_idx_t i;
 
-	for (big_idx_t i = 0; i < __rxcache_size; i++) {
+	for (i = 0; i < __rxcache_size; i++) {
 		item = &__rxcache[i];
 		if (!item->rx.amount) {
 			item->block_idx = block_idx;
 			item->block_rx_idx = block_rx_idx;
 			bcopy(rx, &item->rx, sizeof(pact_rx_t));
 
-			return;
+			break;
 		}
 	}
+
+	if (i != __rxcache_size)
+		return;
 
 	__rxcache = realloc(__rxcache,
 		sizeof(rxcache_t) * (__rxcache_size + 100));
@@ -130,11 +134,6 @@ rxcache_add(big_idx_t block_idx, small_idx_t block_rx_idx, pact_rx_t *rx)
 #endif
 	bzero(__rxcache + sizeof(rxcache_t) * __rxcache_size,
 		sizeof(rxcache_t) * 100);
-
-	item = &__rxcache[__rxcache_size];
-	item->block_idx = block_idx;
-	item->block_rx_idx = block_rx_idx;
-	bcopy(rx, &item->rx, sizeof(pact_rx_t));
 
 	__rxcache_size += 100;
 }

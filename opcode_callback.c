@@ -383,6 +383,9 @@ op_blockinfo_client(event_info_t *info, network_event_t *nev)
 	big_idx_t lcl_idx, rmt_idx;
 	op_blockinfo_response_t *blockinfo;
 
+	if (ignorelist_is_ignored(&network_event(info)->remote_addr))
+		return;
+
 	msg = network_message(info);
 
 	lcl_idx = block_idx_last();
@@ -403,7 +406,7 @@ op_blockinfo_client(event_info_t *info, network_event_t *nev)
 		// boycott this peer. DNS verification will prove the
 		// peer either wrong or correct in time
 		if (!__verify_blockinfo(blockinfo, nev))
-			peerlist_ban(&nev->remote_addr);
+			peerlist_ignore(&nev->remote_addr);
 #ifdef DEBUG_CHAINCHECK
 		else
 			lprintf("block is %ju verified with %s", rmt_idx,
@@ -469,6 +472,9 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 	void *block;
 	size_t p;
 
+	if (ignorelist_is_ignored(&network_event(info)->remote_addr))
+		return;
+
 	msg = network_message(info);
 
 	block = nev->userdata;
@@ -499,7 +505,7 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 				lprintf("peer %s, block %ju, has different "
 					"block hash!",
 					peername(&nev->remote_addr), idx);
-				peerlist_ban(&nev->remote_addr);
+				peerlist_ignore(&nev->remote_addr);
 				break;
 			}
 		}
@@ -587,6 +593,9 @@ op_blockannounce_ignore(event_info_t *info)
 {
 	message_t *msg;
 	int res;
+
+	if (ignorelist_is_ignored(&network_event(info)->remote_addr))
+		return (TRUE);
 
 	msg = network_message(info);
 	if (!(res = block_exists(be64toh(msg->userinfo))))
