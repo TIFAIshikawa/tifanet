@@ -43,7 +43,9 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <arpa/nameser.h>
+#ifndef __OpenBSD__
 #include <arpa/nameser_compat.h>
+#endif
 #include <resolv.h>
 #include "log.h"
 #include "endian.h"
@@ -147,7 +149,7 @@ mmap_file(char *filename, off_t truncsize)
 		FAILTEMP("open %s: %s\n", file, strerror(errno));
 	ftruncate(fd, truncsize);
 	if ((res = mmap(0, truncsize, PROT_READ | PROT_WRITE,
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__) || defined(__OpenBSD__)
 		MAP_SHARED,
 #else
 		MAP_SHARED | MAP_NOCORE,
@@ -1700,6 +1702,7 @@ raw_block_future_free(raw_block_t *rb)
 	free(rb);
 }
 
+#ifndef __OpenBSD__
 static int
 __dns_txt_request(char *request, char *response, size_t size)
 {
@@ -1740,10 +1743,12 @@ __dns_txt_request(char *request, char *response, size_t size)
 
 	return (FALSE);
 }
+#endif
 
 void
 blockchain_dns_verify(void)
 {
+#ifndef __OpenBSD__
 	hash_t bh;
 	size_t sz, bs;
 	big_idx_t idx;
@@ -1853,4 +1858,5 @@ blockchain_dns_verify(void)
 		"rewinding", idx);
 
 	blockchain_rewind(idx);
+#endif
 }
