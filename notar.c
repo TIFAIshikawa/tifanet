@@ -118,10 +118,10 @@ __notar_announce_tick(event_info_t *info, event_flags_t eventtype)
 {
 	__notar_announce_timer = NULL;
 
-	notar_start();
+	notar_announce();
 }
 
-static void
+void
 notar_announce(void)
 {
 	uint64_t delay;
@@ -129,19 +129,13 @@ notar_announce(void)
 	if (__notar_announce_timer)
 		return;
 
-	message_broadcast(OP_NOTARANNOUNCE, node_public_key(), sizeof(hash_t),
-		0);
+	if (!node_is_notar() && config_is_notar_node())
+		message_broadcast(OP_NOTARANNOUNCE, node_public_key(),
+			sizeof(hash_t), 0);
 
 	delay = randombytes_random() % HOUR_USECONDS;
 
 	__notar_announce_timer = timer_set(delay, __notar_announce_tick, NULL);
-}
-
-void
-notar_start(void)
-{
-	if (!node_is_notar() && config_is_notar_node())
-		notar_announce();
 }
 
 int

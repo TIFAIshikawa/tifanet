@@ -853,6 +853,6 @@ daemon_start(void)
 	notar_elect_next();
 
 	listen_socket_open();
-	notar_start();
+	notar_announce();
 	block_poll_start();
 }

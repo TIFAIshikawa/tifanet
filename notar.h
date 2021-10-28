@@ -48,7 +48,7 @@ extern uint8_t *notar_pending_next(void);
 
 extern int node_is_notar(void);
 
-extern void notar_start(void);
+extern void notar_announce(void);
 
 extern int notar_should_generate_block(void);
 extern void notar_elect_next(void);

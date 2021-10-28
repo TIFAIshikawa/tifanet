@@ -1356,7 +1356,7 @@ raw_block_fprint_base(FILE *f, raw_block_t *raw_block)
 	fprintf(f, "  raw_time: %ju\n", be64toh(raw_block->time));
 	fprintf(f, "  time: %s", ctime(&tm));
 	fprintf(f, "  size: %ld\n", sz);
-	fprintf(f, "  hash: %s", hash_str(hash));
+	fprintf(f, "  block_hash: %s", hash_str(hash));
 	if (block_flags(raw_block)) {
 		fprintf(f, "\n  raw_flags: %ju", be64toh(raw_block->flags));
 		fprintf(f, "\n  flags:");
