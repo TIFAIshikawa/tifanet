@@ -601,7 +601,7 @@ ignorelist_is_ignored_ipv4(struct in_addr addr)
 	size_t slen, sz;
 	time64_t expired;
 
-	expired = time(NULL) - (2 * DAY_SECONDS);
+	expired = time(NULL) - (30 * HOUR_SECONDS);
 
 	slen = sizeof(struct in_addr);
 
@@ -626,7 +626,7 @@ ignorelist_is_ignored_ipv6(struct in6_addr addr)
 	size_t slen, sz;
 	time64_t expired;
 
-	expired = time(NULL) - (2 * DAY_SECONDS);
+	expired = time(NULL) - (30 * HOUR_SECONDS);
 
 	slen = sizeof(struct in6_addr);
 
