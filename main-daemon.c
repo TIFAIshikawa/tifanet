@@ -48,6 +48,7 @@
 #include "node.h"
 #include "lock.h"
 #include "log.h"
+#include "dns.h"
 
 #include "pact.h"
 #include "block.h"

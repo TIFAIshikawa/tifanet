@@ -27,49 +27,17 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __TIFA_EVENT_H
-#define __TIFA_EVENT_H
+#ifndef __TIFA_BLOCK_STORAGE_H
+#define __TIFA_BLOCK_STORAGE_H
 
-#include <sys/types.h>
-#include <netinet/in.h>
+#include "block.h"
 
-#include "config.h"
+extern void blockchain_storage_load(void);
+extern void blockchain_rewind(big_idx_t to_idx);
+extern void *raw_block_last_load(size_t *blocksize);
+extern raw_block_t *blocks_load(big_idx_t block_idx, size_t *size,
+	big_idx_t max_blocks, size_t max_size);
+extern void raw_block_write(raw_block_t *raw_block, size_t blocksize);
+extern int blocks_remove(void);
 
-typedef enum {
-	EVENT_NONE		= 0,
-	EVENT_READ		= (1LL << 0),
-	EVENT_WRITE		= (1LL << 1),
-	EVENT_FREE_PAYLOAD	= (1LL << 8),
-	EVENT_TIMER		= (1LL << 9),
-} event_flags_t;
-
-struct __event_info;
-typedef struct __event_info event_info_t;
-typedef void (*event_callback_t)(event_info_t *info, event_flags_t eventflags);
-typedef int (*event_timeout_check_t)(event_info_t *info, time64_t timeout);
-
-struct __event_info {
-	uint64_t ident;
-	flags_t flags;
-	time64_t time;
-	event_callback_t callback;
-	event_callback_t on_close;
-	event_timeout_check_t timeout_check;
-	void *payload;
-};
-
-extern void event_handler_init(void);
-extern event_info_t *event_add(int fd, event_flags_t eventflags,
-	event_callback_t callback, void *payload, size_t payload_size);
-extern void event_update(event_info_t *event, event_flags_t to_remove,
-	event_flags_t to_add);
-extern void event_remove(event_info_t *event);
-
-extern event_info_t *timer_set(uint64_t msec_delay, event_callback_t callback,
-	void *payload);
-extern void timer_cancel(event_info_t *event);
-extern void timer_remove(event_info_t *event);
-
-extern void event_loop_start(void);
-
-#endif /* __TIFA_EVENT_H */
+#endif /* __TIFA_BLOCK_STORAGE_H */

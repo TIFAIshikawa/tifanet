@@ -140,7 +140,7 @@ extern void block_transit_message_remove(message_t *msg);
 
 extern int raw_block_future_buffer_add(raw_block_t *rb, size_t size);
 
-extern void blockchain_dns_verify(void);
+extern void blockchain_rewind(big_idx_t to_idx);
 
 inline static int
 block_exists(big_idx_t index)

@@ -37,6 +37,7 @@
 #include <sys/socket.h>
 
 #include "log.h"
+#include "dns.h"
 #include "notar.h"
 #include "error.h"
 #include "cache.h"
