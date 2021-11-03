@@ -234,7 +234,7 @@ __peerlist_request_tick(event_info_t *info, event_flags_t eventtype)
 {
 	__peerlist_timer = NULL;
 
-	//peerlist_request_broadcast();
+	peerlist_request_broadcast();
 }
 
 void
@@ -244,6 +244,8 @@ peerlist_request_broadcast(void)
 
 	if (__peerlist_timer)
 		return;
+
+	peerlist_bootstrap();
 
 	message_broadcast(OP_PEERLIST, NULL, 0, 0);
 
@@ -409,8 +411,7 @@ peerlist_remove(struct sockaddr_storage *addr)
 		break;
 	}
 
-	if ((!network_is_ipv6_capable() && peerlist.list4_size < 4) ||
-		(network_is_ipv6_capable() && !peerlist.list6_size))
+	if (peerlist.list4_size + peerlist.list6_size < 4)
 		peerlist_bootstrap();
 }
 
@@ -653,12 +654,10 @@ ignorelist_is_ignored(struct sockaddr_storage *addr)
 	switch (addr->ss_family) {
 	case AF_INET:
 		a4 = (struct sockaddr_in *)addr;
-		return ignorelist_is_ignored_ipv4(a4->sin_addr);
-		break;
+		return (ignorelist_is_ignored_ipv4(a4->sin_addr));
 	case AF_INET6:
 		a6 = (struct sockaddr_in6 *)addr;
-		return ignorelist_is_ignored_ipv6(a6->sin6_addr);
-		break;
+		return (ignorelist_is_ignored_ipv6(a6->sin6_addr));
 	default:
 		lprintf("peerlist_ignore: unsupported ss_family: %d",
 			addr->ss_family);

@@ -97,7 +97,7 @@ static event_info_t *__block_poll_timer = NULL;
 static message_t *__block_transit_messages[BLOCK_TRANSIT_MESSAGES_MAX] = { 0 };
 static raw_block_t *__block_future_buffer[BLOCK_FUTURE_BUFFERS_MAX] = { 0 };
 
-static void add_notar_reward(block_t *block, raw_pact_t **rt, size_t nrt);
+static void add_notar_reward(block_t *block);
 static void __raw_block_process(raw_block_t *raw_block, size_t blocksize,
 	int process_caches);
 static int raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize);
@@ -427,7 +427,7 @@ block_reward(big_idx_t idx)
 }
 
 static void
-add_notar_reward(block_t *block, raw_pact_t **rp, size_t nrp)
+add_notar_reward(block_t *block)
 {
 	size_t tsize;
 	wallet_t *wallet;
@@ -1159,7 +1159,7 @@ block_finalize(block_t *block, size_t *blocksize)
 
 	rtl = pacts_pending(&rts);
 
-	add_notar_reward(block, rtl, rts);
+	add_notar_reward(block);
 
 	for (small_idx_t ti = 0; ti < block->num_pacts; ti++) {
 		t = block->pacts[ti];
@@ -1574,6 +1574,8 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 			}
 			block_getnext_broadcast();
 		}
+		if (t >= last + 3)
+			blockchain_update();
 		if (t >= last + BLOCK_DENOUNCE_EMERGENCY_DELAY_SECONDS &&
 			pubkey_equals(node_public_key(),
 				notar_denounce_emergency_node())) {

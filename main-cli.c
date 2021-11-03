@@ -177,7 +177,7 @@ opt_addresses(int argc, char *argv[])
 			printf("  - \"%s\":\n", wallet_name(w[i]));
 			addrs = wallet_addresses(w[i], &num_addrs);
 			for (size_t j = 0; j < num_addrs; j++)
-				printf("     - \"%s\": %2.2f\n",
+				printf("    - \"%s\": %2.2f\n",
 					address_name(addrs[j]),
 					stoi(address_balance(addrs[j])));
 		}

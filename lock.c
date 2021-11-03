@@ -64,12 +64,23 @@ lockfile_create(void)
 int
 daemon_lock(void)
 {
-	return (lockf(__lockfile_fd, F_LOCK, 0) == 0 ? TRUE : FALSE);
+	char pidstr[128];
+
+	if (lockf(__lockfile_fd, F_LOCK, 0) != 0)
+		return (FALSE);
+
+	ftruncate(__lockfile_fd, 0);
+
+	snprintf(pidstr, 128, "%d", getpid());
+	write(__lockfile_fd, pidstr, strlen(pidstr));
+
+	return (TRUE);
 }
 
 int
 daemon_unlock(void)
 {
+	ftruncate(__lockfile_fd, 0);
 	return (lockf(__lockfile_fd, F_ULOCK, 0) == 0 ? TRUE : FALSE);
 }
 

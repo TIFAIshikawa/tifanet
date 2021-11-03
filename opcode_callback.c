@@ -379,14 +379,11 @@ __verify_blockinfo(op_blockinfo_response_t *info, network_event_t *nev)
 static void
 op_blockinfo_client(event_info_t *info, network_event_t *nev)
 {
-	message_t *msg;
 	big_idx_t lcl_idx, rmt_idx;
 	op_blockinfo_response_t *blockinfo;
 
 	if (ignorelist_is_ignored(&network_event(info)->remote_addr))
 		return;
-
-	msg = network_message(info);
 
 	lcl_idx = block_idx_last();
 
