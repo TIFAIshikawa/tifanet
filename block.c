@@ -548,12 +548,12 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	ct = time(NULL);
 	bt = block_time(raw_block);
 	rbl = raw_block_last(&rbls);
-	lbt = block_time(rbl);
 	if (bt > ct) {
 		lprintf("block with index %ju has time in future: %ld vs %ld",
 			block_idx(raw_block), bt, ct);
 		return (FALSE);
 	}
+	lbt = block_time(rbl);
 	if (lbt > bt) {
 		lprintf("block with index %ju has time earlier than previous "
 			"block: %ld vs %ld", block_idx(raw_block), bt, lbt);
@@ -1222,7 +1222,7 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 
 		block_transit_messages_cleanup();
 		last = block_time(raw_block_last(NULL));
-		if (t >= last + 1) {
+		if (t >= last + 3) {
 #ifdef DEBUG_NETWORK
 			lprintf("no blocks seen in a bit, polling...");
 #endif
@@ -1235,7 +1235,7 @@ __block_poll_tick(event_info_t *info, event_flags_t eventtype)
 			}
 			block_getnext_broadcast();
 		}
-		if (t >= last + 3)
+		if (t >= last + 4)
 			blockchain_update();
 		if (t >= last + BLOCK_DENOUNCE_EMERGENCY_DELAY_SECONDS &&
 			pubkey_equals(node_public_key(),

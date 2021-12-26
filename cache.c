@@ -88,6 +88,7 @@ caches_get_blocks(event_info_t *info, event_flags_t eventflags)
 	cache_hash(hash);
 	rb = raw_block_last(&size);
 
+lprintf("hash=%p rb=%p", hash, rb);
 	if (!hash_equals(hash, rb->cache_hash)) {
 		lprintf("local cache hash doesn't equal block cache_hash "
 			"@ idx %ju (rxcache idx %ju notarscache idx %ju)",

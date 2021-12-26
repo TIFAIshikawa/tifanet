@@ -45,6 +45,7 @@
 #include "endian.h"
 #include "keypair.h"
 #include "network.h"
+#include "block_storage.h"
 #include "opcode_callback.h"
 
 #define GETBLOCKS_MAX_BLOCKS 1500
@@ -495,7 +496,11 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 		}
 
 		idx = block_idx(block);
-		if (idx <= block_idx_last()) {
+
+		if (config_is_caches_only() && !block_idx_last())
+			block_load_initial(block, size);
+
+		if (idx <= block_idx_last() && !config_is_caches_only()) {
 			check = block_load(idx, &csz);
 			raw_block_hash(block, size, bh);
 			raw_block_hash(check, csz, ch);

@@ -40,4 +40,6 @@ extern raw_block_t *blocks_load(big_idx_t block_idx, size_t *size,
 extern void raw_block_write(raw_block_t *raw_block, size_t blocksize);
 extern int blocks_remove(void);
 
+extern void block_load_initial(raw_block_t *block, size_t size);
+
 #endif /* __TIFA_BLOCK_STORAGE_H */

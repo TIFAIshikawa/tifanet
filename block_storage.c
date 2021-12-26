@@ -395,3 +395,15 @@ blocks_remove(void)
 
 	return (r);
 }
+
+void
+block_load_initial(raw_block_t *block, size_t size)
+{
+	if (__raw_block_last)
+		FAIL(EX_SOFTWARE, "block_load_initial: already loaded %ju",
+			block_idx_last());
+
+	__raw_block_last = malloc(size);
+	bcopy(block, __raw_block_last, size);
+	__raw_block_last_size = size;
+}

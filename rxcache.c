@@ -206,7 +206,8 @@ rxcache_remove(big_idx_t block_idx, small_idx_t block_rx_idx)
 	}
 
 	FAIL(EX_SOFTWARE, "rxcache_remove: block_idx %ju, block_rx_idx %u "
-		"doesn't exist in cache!", block_idx, block_rx_idx);
+		"doesn't exist in cache!", be64toh(block_idx),
+		be32toh(block_rx_idx));
 }
 
 void
