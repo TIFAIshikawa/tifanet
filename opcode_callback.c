@@ -149,7 +149,7 @@ opcode_payload_size_valid(message_t *msg, int direction)
 	case OP_NOTARDENOUNCE:
 		return (be32toh(msg->payload_size) == sizeof(public_key_t));
 	case OP_BLOCKANNOUNCE:
-		return (be32toh(msg->payload_size) >= 256 && be32toh(msg->payload_size) < MAXPACKETSIZE);
+		return (be32toh(msg->payload_size) >= sizeof(raw_block_timeout_t) && be32toh(msg->payload_size) < MAXPACKETSIZE);
 	case OP_PACT:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (be32toh(msg->payload_size) >= sizeof(raw_pact_t) + sizeof(pact_tx_t) + sizeof(pact_rx_t) && be32toh(msg->payload_size) < MAXPACKETSIZE);
@@ -484,14 +484,15 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 		if (bufsize < sizeof(raw_block_t) + sizeof(raw_pact_t) +
 			sizeof(pact_rx_t)) {
 			lprintf("incoming block is smaller than block "
-				"skeleton: %d", bufsize);
+				"skeleton: %ld vs %ld", bufsize, bufsize);
 			break;
 		}
 
 		size = raw_block_size(block, bufsize);
 		if (size > bufsize) {
-			lprintf("incoming block is larger than incoming data",
-				": %d vs %d", size, bufsize);
+			lprintf("incoming block %ju is larger than "
+				"incoming data: %ld vs %ld", block_idx(block),
+				size, bufsize);
 			break;
 		}
 

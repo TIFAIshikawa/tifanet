@@ -276,7 +276,7 @@ rxcache_raw_block_add(raw_block_t *raw_block)
 
 	qsort(__rxcache, __rxcache_size, sizeof(rxcache_t), rxcache_compare);
 
-	if ((block_idx(raw_block) % CACHE_HASH_BLOCK_INTERVAL) == 0)
+	if (block_is_syncblock(raw_block))
 		rxcache_save(raw_block->index);
 }
 
@@ -318,7 +318,7 @@ rxcache_raw_block_rewind(raw_block_t *raw_block)
 
 	qsort(__rxcache, __rxcache_size, sizeof(rxcache_t), rxcache_compare);
 
-	if ((block_idx(raw_block) % CACHE_HASH_BLOCK_INTERVAL) == 0)
+	if (block_is_syncblock(raw_block))
 		rxcache_save(raw_block->index);
 }
 

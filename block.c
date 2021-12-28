@@ -993,10 +993,15 @@ block_free(block_t *block)
 void *
 raw_block_new_notar(raw_block_t *raw_block)
 {
+	size_t nn_offset;
+
 	if (!(block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR))
 		return (NULL);
 
-	return ((void *)raw_block + sizeof(raw_block_t));
+	nn_offset = sizeof(raw_block_t);
+	if (block_is_syncblock(raw_block))
+		nn_offset += sizeof(hash_t);
+	return ((void *)raw_block + nn_offset);
 }
 
 raw_pact_t *

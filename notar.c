@@ -335,20 +335,15 @@ void
 notar_raw_block_add(raw_block_t *raw_block)
 {
 	raw_block_timeout_t *rb;
-	size_t nn_offset;
 
 	rb = (raw_block_timeout_t *)raw_block;
 	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
 		return notar_remove(rb->denounced_notar);
 
-	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR) {
-		nn_offset = sizeof(raw_block_t);
-		if (block_is_syncblock(raw_block))
-			nn_offset += sizeof(hash_t);
-		notar_add((void *)raw_block + nn_offset);
-	}
+	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR)
+		notar_add(raw_block_new_notar(raw_block));
 
-	if (block_idx(raw_block) % CACHE_HASH_BLOCK_INTERVAL == 0)
+	if (block_is_syncblock(raw_block))
 		notarscache_save(raw_block->index);
 }
 
@@ -363,7 +358,7 @@ notar_raw_block_rewind(raw_block_t *raw_block)
 	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR)
 		notar_remove((void *)raw_block + sizeof(raw_block_t));
 	
-	if (block_idx(raw_block) % CACHE_HASH_BLOCK_INTERVAL == 0)
+	if (block_is_syncblock(raw_block))
 		notarscache_save(raw_block->index);
 }
 

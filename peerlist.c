@@ -48,7 +48,7 @@
 #include "event.h"
 #include "log.h"
 
-#define PEERLIST_SAVE_DELAY_MS 1000
+#define PEERLIST_SAVE_DELAY_USECONDS 1000
 
 typedef struct {
 	time64_t time;
@@ -180,7 +180,7 @@ peerlist_save(void)
 	if (__peerlist_save_timer)
 		return;
 
-	__peerlist_save_timer = timer_set(PEERLIST_SAVE_DELAY_MS,
+	__peerlist_save_timer = timer_set(PEERLIST_SAVE_DELAY_USECONDS,
 		__peerlist_save_tick, NULL);
 }
 
