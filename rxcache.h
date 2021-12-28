@@ -43,7 +43,7 @@ extern big_idx_t rxcache_last_block_idx(void);
 
 extern rxcache_t *rxcache(big_idx_t *size);
 
-extern void rxcache_hash(hash_t result_hash);
+extern void rxcache_hash(hash_t result_hash, big_idx_t block_idx);
 
 extern void rxcache_load(void);
 extern void rxcache_save(big_idx_t block_idx);

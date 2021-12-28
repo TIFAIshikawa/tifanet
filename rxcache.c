@@ -90,13 +90,13 @@ rxcache(big_idx_t *size)
 }
 
 void
-rxcache_hash(hash_t result_hash)
+rxcache_hash(hash_t result_hash, big_idx_t block_idx)
 {
 	crypto_generichash_state crx;
 	big_idx_t idx;
 	big_idx_t size;
 
-	idx = htobe64(block_idx_last());
+	idx = htobe64(block_idx);
 	size = htobe64(__rxcache_size);
 
 	crypto_generichash_init(&crx, NULL, 0, sizeof(hash_t));

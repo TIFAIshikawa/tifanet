@@ -33,7 +33,7 @@
 #include "config.h"
 #include "keypair.h"
 
-extern void cache_hash(hash_t resulthash);
+extern void cache_hash(hash_t resulthash, big_idx_t block_idx);
 
 extern int cache_write(char *filename, char *buffer, size_t size);
 

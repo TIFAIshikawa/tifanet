@@ -335,13 +335,18 @@ void
 notar_raw_block_add(raw_block_t *raw_block)
 {
 	raw_block_timeout_t *rb;
+	size_t nn_offset;
 
 	rb = (raw_block_timeout_t *)raw_block;
 	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
 		return notar_remove(rb->denounced_notar);
 
-	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR)
-		notar_add((void *)raw_block + sizeof(raw_block_t));
+	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR) {
+		nn_offset = sizeof(raw_block_t);
+		if (block_is_syncblock(raw_block))
+			nn_offset += sizeof(hash_t);
+		notar_add((void *)raw_block + nn_offset);
+	}
 
 	if (block_idx(raw_block) % CACHE_HASH_BLOCK_INTERVAL == 0)
 		notarscache_save(raw_block->index);
@@ -496,13 +501,13 @@ notar_pending_next(void)
 }
 
 void
-notarscache_hash(hash_t result_hash)
+notarscache_hash(hash_t result_hash, big_idx_t block_idx)
 {
 	crypto_generichash_state crx;
         big_idx_t idx;
         big_idx_t size;
 
-        idx = htobe64(block_idx_last());
+        idx = htobe64(block_idx);
         size = htobe64(__notars_count);
 
         crypto_generichash_init(&crx, NULL, 0, sizeof(hash_t));

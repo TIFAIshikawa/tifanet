@@ -36,6 +36,8 @@
 #include "config.h"
 #include "pact.h"
 
+#define SYNCBLOCK 1000
+
 enum block_flags_t {
 	BLOCK_FLAG_NEW_NOTAR		= (1LL << 0),	// Block introduces
 							// new notar
@@ -54,11 +56,13 @@ typedef struct __attribute__((__packed__)) __raw_block {
 	hash_t prev_block_hash;
 	public_key_t notar;
 	signature_t signature;
-	hash_t cache_hash;
 	small_idx_t num_banned_notars;
 	small_idx_t num_pacts;
-	// public_key_t new_notar;
-	// pacts & denounced notar structures after here...
+	// optional:
+	//   hash_t cache_hash; /* every SYNCBLOCK blocks */
+	//   public_key_t new_notar; /* optionally every SYNCBLOCK blocks */
+	//   raw_pact_t pacts[]; /* >= 1 pacts */
+	//   public_key_t denounced_notars[]; /* optional, not used yet */
 } raw_block_t;
 
 typedef struct __attribute__((__packed__)) __block {
@@ -133,6 +137,9 @@ extern int blocks_remove(void);
 extern int raw_block_validate(raw_block_t *raw_block, size_t blocksize); 
 
 extern void block_poll_start(void);
+
+extern int block_is_syncblock(raw_block_t *rb);
+extern void *block_cache_hash(raw_block_t *rb);
 
 extern int block_idx_in_transit(big_idx_t idx_be);
 extern void block_transit_message_add(message_t *msg);

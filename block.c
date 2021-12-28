@@ -61,7 +61,7 @@
 #define BLOCK_DENOUNCE_EMERGENCY_DELAY_SECONDS 29
 #define BLOCK_TRANSIT_MESSAGES_MAX 20
 #define BLOCK_FUTURE_BUFFERS_MAX 20
-#define BLOCK_NOTAR_INTERVAL 1000
+#define BLOCK_NOTAR_INTERVAL SYNCBLOCK
 #define BLOCK_REWIND_INTERVAL 100
 
 #define DNS_VERIFY_CHANCE 60
@@ -258,7 +258,7 @@ block_create(void)
 
 	bcopy(node_public_key(), res->notar, sizeof(public_key_t));
 
-	if (res->index % BLOCK_NOTAR_INTERVAL == 0) {
+	if (res->index % SYNCBLOCK == 0) {
 		pn = notar_pending_next();
 		res->flags |= pn != NULL ? BLOCK_FLAG_NEW_NOTAR : 0;
 		if (pn)
@@ -317,6 +317,8 @@ raw_block_size(raw_block_t *raw_block, size_t limit)
 		return (sizeof(raw_block_timeout_t));
 
 	res = sizeof(raw_block_t);
+	if (block_is_syncblock(raw_block))
+		res += sizeof(hash_t);
 	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR)
 		res += sizeof(public_key_t);
 	t = raw_block_pacts(raw_block);
@@ -539,7 +541,7 @@ raw_block_validate(raw_block_t *raw_block, size_t blocksize)
 	}
 
 	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR &&
-		block_idx(raw_block) % BLOCK_NOTAR_INTERVAL) {
+		!block_is_syncblock(raw_block)) {
 		lprintf("block with index %ju tries to add new notar "
 			"when this is not allowed", block_idx(raw_block));
 		return (FALSE);
@@ -837,6 +839,8 @@ block_finalize(block_t *block, size_t *blocksize)
 	tm = time(NULL);
 
 	bs = sizeof(raw_block_t);
+	if (block->index % SYNCBLOCK == 0)
+		bs += sizeof(hash_t);
 	if (block->flags & BLOCK_FLAG_NEW_NOTAR)
 		bs += sizeof(public_key_t);
 
@@ -877,6 +881,10 @@ block_finalize(block_t *block, size_t *blocksize)
 	bcopy(block->notar, res->notar, sizeof(public_key_t));
 	res->num_pacts = htobe32(max_tr + max_rtr);
 	curbuf = (void *)res + sizeof(raw_block_t);
+
+	// if SYNCBLOCK, skip the cache_hash for now and fill later
+	if (block->index % SYNCBLOCK == 0)
+		curbuf += sizeof(hash_t);
 	if (block->flags & BLOCK_FLAG_NEW_NOTAR) {
 		bcopy(block->new_notar, curbuf, sizeof(public_key_t));
 		curbuf += sizeof(public_key_t);
@@ -911,7 +919,8 @@ block_finalize(block_t *block, size_t *blocksize)
 	rxcache_raw_block_add(res);
 	notar_raw_block_add(res);
 
-	cache_hash(res->cache_hash);
+	if (block_is_syncblock(res))
+		cache_hash(block_cache_hash(res), block_idx(res));
 
 	bzero(res->signature, sizeof(signature_t));
 	raw_block_sign(res, bs, signature);
@@ -994,12 +1003,16 @@ raw_pact_t *
 raw_block_pacts(raw_block_t *raw_block)
 {
 	void *res;
+	size_t offset;
 
-	res = (void *)raw_block + sizeof(raw_block_t);
+	res = (void *)raw_block;
+	offset = sizeof(raw_block_t);
+	if (block_is_syncblock(res))
+		offset += sizeof(hash_t);
 	if (be64toh(raw_block->flags) & BLOCK_FLAG_NEW_NOTAR)
-		res += sizeof(public_key_t);
+		offset += sizeof(public_key_t);
 
-	return (res);
+	return (res + offset);
 }
 
 static void
@@ -1049,10 +1062,8 @@ raw_block_fprint_base(FILE *f, raw_block_t *raw_block)
 			fprintf(f, " BLOCK_FLAG_NEW_NOTAR");
 		if (block_flags(raw_block) & BLOCK_FLAG_DENOUNCE_NOTAR)
 			fprintf(f, " BLOCK_FLAG_DENOUNCE_NOTAR");
-	
-		if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT) {
+		if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
 			fprintf(f, " BLOCK_FLAG_TIMEOUT");
-		}
 	}
 
 	fprintf(f, "\n");
@@ -1079,12 +1090,16 @@ raw_block_fprint(FILE *f, raw_block_t *raw_block)
 		hash_str(raw_block->prev_block_hash));
 	node_name = public_key_node_name(raw_block->notar);
 	fprintf(f, "  notar: %s\n", node_name);
-	if (be64toh(raw_block->flags) & BLOCK_FLAG_NEW_NOTAR) {
+	if (block_flags(raw_block) & BLOCK_FLAG_NEW_NOTAR) {
 		ptr = (void *)raw_block + sizeof(raw_block_t);
+		if (block_is_syncblock(raw_block))
+			ptr += sizeof(hash_t);
 		fprintf(f, "  new_notar: %s\n", public_key_node_name(ptr));
 	}
 	fprintf(f, "  signature: %s\n", signature_str(raw_block->signature));
-	fprintf(f, "  cache_hash: %s\n", hash_str(raw_block->cache_hash));
+	if (block_is_syncblock(raw_block))
+		fprintf(f, "  cache_hash: %s\n",
+			hash_str(block_cache_hash(raw_block)));
 	fprintf(f, "  num_pacts: %d\n", num_pacts(raw_block));
 	fprintf(f, "  pacts:\n");
 	t = raw_block_pacts(raw_block);
@@ -1261,6 +1276,21 @@ block_poll_start(void)
 
 	__block_poll_timer = timer_set(BLOCK_POLL_INTERVAL_USECONDS,
 		__block_poll_tick, NULL);
+}
+
+int
+block_is_syncblock(raw_block_t *rb)
+{
+	return (block_idx(rb) % SYNCBLOCK == 0);
+}
+
+void *
+block_cache_hash(raw_block_t *rb)
+{
+	if (!block_is_syncblock(rb))
+		return (NULL);
+
+	return (rb + sizeof(raw_block_t));
 }
 
 int

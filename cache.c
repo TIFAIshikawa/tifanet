@@ -44,12 +44,12 @@
 static int __caches_only_downloaded = 0;
 
 void
-cache_hash(hash_t resulthash)
+cache_hash(hash_t resulthash, big_idx_t block_idx)
 {
 	hash_t hash[CACHE_HASH_AMOUNT];
 
-	rxcache_hash(hash[0]);
-	notarscache_hash(hash[1]);
+	rxcache_hash(hash[0], block_idx);
+	notarscache_hash(hash[1], block_idx);
 
 	crypto_generichash(resulthash, sizeof(hash_t),
 			   (void *)hash, sizeof(hash_t) * CACHE_HASH_AMOUNT,
@@ -85,11 +85,12 @@ caches_get_blocks(event_info_t *info, event_flags_t eventflags)
 	size_t size;
 	raw_block_t *rb;
 
-	cache_hash(hash);
 	rb = raw_block_last(&size);
+	if (!block_is_syncblock(rb))
+		return;
 
-lprintf("hash=%p rb=%p", hash, rb);
-	if (!hash_equals(hash, rb->cache_hash)) {
+	cache_hash(hash, block_idx(rb));
+	if (!hash_equals(hash, block_cache_hash(rb))) {
 		lprintf("local cache hash doesn't equal block cache_hash "
 			"@ idx %ju (rxcache idx %ju notarscache idx %ju)",
 			block_idx_last(), rxcache_last_block_idx(),
