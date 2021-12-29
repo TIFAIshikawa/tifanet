@@ -149,7 +149,7 @@ opcode_payload_size_valid(message_t *msg, int direction)
 	case OP_NOTARDENOUNCE:
 		return (be32toh(msg->payload_size) == sizeof(public_key_t));
 	case OP_BLOCKANNOUNCE:
-		return (be32toh(msg->payload_size) >= sizeof(raw_block_timeout_t) && be32toh(msg->payload_size) < MAXPACKETSIZE);
+		return (be32toh(msg->payload_size) >= 224 && be32toh(msg->payload_size) < MAXPACKETSIZE);
 	case OP_PACT:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (be32toh(msg->payload_size) >= sizeof(raw_pact_t) + sizeof(pact_tx_t) + sizeof(pact_rx_t) && be32toh(msg->payload_size) < MAXPACKETSIZE);

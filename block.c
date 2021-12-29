@@ -1295,7 +1295,7 @@ block_cache_hash(raw_block_t *rb)
 	if (!block_is_syncblock(rb))
 		return (NULL);
 
-	return (rb + sizeof(raw_block_t));
+	return ((void *)rb + sizeof(raw_block_t));
 }
 
 int
