@@ -59,7 +59,7 @@ static public_key_t *__pending_notars = NULL;
 static event_info_t *__notar_announce_timer = NULL;
 
 static void notar_pending_remove(public_key_t new_notar);
-static big_idx_t notar_elect_raw_block(big_idx_t raw_block_idx);
+static big_idx_t notar_elect_raw_block(raw_block_t *raw_block, size_t size);
 static void *notar_block0(void);
 
 big_idx_t
@@ -213,17 +213,11 @@ notar_remove(public_key_t remove_notar)
 }
 
 static big_idx_t
-notar_elect_raw_block(big_idx_t raw_block_idx)
+notar_elect_raw_block(raw_block_t *raw_block, size_t size)
 {
-	raw_block_t *raw_block;
 	big_idx_t idx;
 	hash_t hash;
-	size_t size;
 
-	if (!(raw_block = block_load(raw_block_idx, &size)))
-		FAIL(EX_SOFTWARE, "notar_elect_raw_block: invalid block index "
-			"%ju", raw_block_idx);
-	
 	bzero(hash, sizeof(hash_t));
 	crypto_generichash(hash, sizeof(hash_t), (void *)raw_block, size,
 			   NULL, 0);
@@ -238,7 +232,12 @@ notar_elect_raw_block(big_idx_t raw_block_idx)
 void
 notar_elect_next(void)
 {
-	__next_notar_idx = notar_elect_raw_block(block_idx_last());
+	raw_block_t *raw_block;
+	size_t size;
+
+	raw_block = raw_block_last(&size);
+
+	__next_notar_idx = notar_elect_raw_block(raw_block, size);
 
 	lprintf("notar(%ju) = %s (%d)", block_idx_last() + 1,
 		public_key_node_name(__notars[__next_notar_idx]),

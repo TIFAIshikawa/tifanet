@@ -689,6 +689,9 @@ exit(1);
 	if (strcmp(opt, "reset") == 0)
 		return opt_reset(argc, argv);
 
+	if (!lockfile_is_locked())
+		system("tifanetd -f -s -c");
+
 	if (!check_caches_only()) {
 		blockchain_load();
 		block_last_load();
@@ -699,9 +702,6 @@ exit(1);
 		return opt_node(argc, argv);
 	if (strcmp(opt, "notars") == 0)
 		return opt_notars(argc, argv);
-
-	if (!lockfile_is_locked())
-		system("tifanetd -f -s");
 
 	rxcache_load();
 

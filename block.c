@@ -1195,11 +1195,6 @@ getblocks(big_idx_t target_idx)
 
 	blockchain_dns_verify();
 
-	if (config_is_sync_only()) {
-		peerlist_save();
-		exit(0);
-	}
-
 	notar_elect_next();
 	if (!config_is_caches_only())
 		daemon_start();

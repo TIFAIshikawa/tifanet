@@ -406,4 +406,6 @@ block_load_initial(raw_block_t *block, size_t size)
 	__raw_block_last = malloc(size);
 	bcopy(block, __raw_block_last, size);
 	__raw_block_last_size = size;
+
+	notar_elect_next();
 }

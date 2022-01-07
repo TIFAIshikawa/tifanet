@@ -45,6 +45,7 @@
 #include "endian.h"
 #include "keypair.h"
 #include "network.h"
+#include "rxcache.h"
 #include "block_storage.h"
 #include "opcode_callback.h"
 
@@ -144,7 +145,7 @@ opcode_payload_size_valid(message_t *msg, int direction)
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (be32toh(msg->payload_size) == sizeof(big_idx_t));
 		else
-			return (be32toh(msg->payload_size) >= 256 && be32toh(msg->payload_size) < MAXPACKETSIZE);
+			return (be32toh(msg->payload_size) >= 224 && be32toh(msg->payload_size) < MAXPACKETSIZE);
 	case OP_NOTARANNOUNCE:
 	case OP_NOTARDENOUNCE:
 		return (be32toh(msg->payload_size) == sizeof(public_key_t));
@@ -532,6 +533,13 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 
 	if (notar_should_generate_block())
 		block_generate_next();
+
+	if (config_is_sync_only()) {
+		peerlist_save();
+		rxcache_save(htobe64(block_idx_last()));
+		notarscache_save(htobe64(block_idx_last()));
+		exit(0);
+	}
 }
 
 static void
