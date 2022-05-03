@@ -56,7 +56,7 @@ static big_idx_t __notars_last_block_idx = 0;
 
 static public_key_t *__pending_notars = NULL;
 
-static event_info_t *__notar_announce_timer = NULL;
+static event_timer_t *__notar_announce_timer = NULL;
 
 static void notar_pending_remove(public_key_t new_notar);
 static big_idx_t notar_elect_raw_block(raw_block_t *raw_block, size_t size);
@@ -114,7 +114,7 @@ notar_should_generate_block(void)
 }
 
 static void
-__notar_announce_tick(event_info_t *info, event_flags_t eventtype)
+__notar_announce_tick(void *info, void *payload)
 {
 	__notar_announce_timer = NULL;
 
@@ -135,7 +135,8 @@ notar_announce(void)
 
 	delay = randombytes_random() % HOUR_USECONDS;
 
-	__notar_announce_timer = timer_set(delay, __notar_announce_tick, NULL);
+	__notar_announce_timer = event_timer_add(delay, FALSE,
+		__notar_announce_tick, NULL);
 }
 
 int

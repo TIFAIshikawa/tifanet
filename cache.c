@@ -79,7 +79,7 @@ cache_write(char *filename, char *buffer, size_t size)
 }
 
 static void
-caches_get_blocks(event_info_t *info, event_flags_t eventflags)
+caches_get_blocks(void *info, void *payload)
 {
 	hash_t hash;
 	size_t size;
@@ -100,7 +100,7 @@ caches_get_blocks(event_info_t *info, event_flags_t eventflags)
 }
 
 static void
-caches_only_download_callback(event_info_t *info, event_flags_t eventflags)
+caches_only_download_callback(void *info, void *payload)
 {
 	big_idx_t index;
 	__caches_only_downloaded++;

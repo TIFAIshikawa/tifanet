@@ -72,10 +72,9 @@ static raw_block_timeout_t __raw_block_timeout_tmp = { 0 };
 
 static big_idx_t __getblocks_target_idx = 0;
 
-static event_info_t *__block_poll_timer = NULL;
+static event_timer_t *__block_poll_timer = NULL;
 
 static message_t *__block_transit_messages[BLOCK_TRANSIT_MESSAGES_MAX] = { 0 };
-static raw_block_t *__block_future_buffer[BLOCK_FUTURE_BUFFERS_MAX] = { 0 };
 
 static void add_notar_reward(block_t *block);
 static void __raw_block_process(raw_block_t *raw_block, size_t blocksize,
@@ -87,8 +86,6 @@ static void raw_block_timeout_free(void);
 static void raw_block_fprint_base(FILE *f, raw_block_t *raw_block);
 static void raw_block_timeout_fprint(FILE *f, raw_block_timeout_t *raw_block);
 static void block_transit_messages_cleanup(void);
-static raw_block_t *raw_block_future_get(big_idx_t idx);
-static void raw_block_future_free(raw_block_t *rb);
 
 big_idx_t
 block_idx_last()
@@ -713,8 +710,7 @@ raw_block_timeout_process_block(raw_block_timeout_t *rt)
 
 		// the block isn't yet in the chain, so use message_broadcast()
 		if (rt->index)
-			message_broadcast(OP_BLOCKANNOUNCE, rt,
-				sizeof(raw_block_timeout_t), rt->index);
+			message_broadcast(OP_BLOCKANNOUNCE, NULL, 0, rt->index);
 
 		return (TRUE);
 	}
@@ -753,8 +749,7 @@ raw_block_timeout_process(raw_block_t *raw_block)
 
 	rt = &__raw_block_timeout_tmp;
 	if (block_denounce_timeout_fill())
-		message_broadcast(OP_BLOCKANNOUNCE, &__raw_block_timeout_tmp,
-			sizeof(raw_block_timeout_t), rt->index);
+		message_broadcast(OP_BLOCKANNOUNCE, NULL, 0, rt->index);
 
 	raw_block_timeout_process_block(rt);
 }
@@ -770,7 +765,6 @@ __raw_block_process(raw_block_t *raw_block, size_t blocksize,
 	int process_caches)
 {
 	raw_pact_t *t;
-	raw_block_t *fb;
 	size_t size;
 
 	if (block_flags(raw_block) & BLOCK_FLAG_TIMEOUT)
@@ -796,11 +790,6 @@ __raw_block_process(raw_block_t *raw_block, size_t blocksize,
 		__getblocks_target_idx = 0;
 
 	notar_elect_next();
-
-	if ((fb = raw_block_future_get(block_idx_last() + 1))) {
-		raw_block_process(fb, raw_block_size(fb, 0));
-		raw_block_future_free(fb);
-	}
 }
 
 void
@@ -1144,19 +1133,24 @@ raw_block_broadcast(big_idx_t index)
 
 	block = block_load(index, &size);
 	if (block && size)
-		message_broadcast(OP_BLOCKANNOUNCE, block, size,
-			htobe64(index));
+		message_broadcast(OP_BLOCKANNOUNCE, NULL, 0, htobe64(index));
+}
+
+static void
+__blockchain_update_tick(void *info, void *payload)
+{
+	blockchain_update();
 }
 
 void
-blockchain_update()
+blockchain_update(void)
 {
 	if (!message_send_random(OP_BLOCKINFO, NULL, 0, 0)) {
 #ifdef DEBUG_NETWORK
 		lprintf("blockchain_update: failed retrieving last block, "
 			"trying again...");
 #endif
-		blockchain_update();
+		event_timer_add(10, FALSE, __blockchain_update_tick, NULL);
 	}
 }
 
@@ -1167,11 +1161,20 @@ blockchain_is_updating(void)
 }
 
  
+static void
+__getblock_tick(void *info, void *payload)
+{
+	big_idx_t index;
+
+	index = (big_idx_t)payload;
+	getblock(index);
+}
+
 void
 getblock(big_idx_t index)
 {
 	if (!message_send_random(OP_GETBLOCK, NULL, 0, htobe64(index)))
-		getblock(index);
+		event_timer_add(1000, FALSE, __getblock_tick, (void *)index);
 }
 
 void
@@ -1211,7 +1214,7 @@ block_getnext_broadcast(void)
 }
 
 static void
-__block_poll_tick(event_info_t *info, event_flags_t eventtype)
+__block_poll_tick(void *info, void *payload)
 {
 	time64_t t;
 	time64_t last;
@@ -1274,8 +1277,8 @@ block_poll_start(void)
 	if (__block_poll_timer)
 		return;
 
-	__block_poll_timer = timer_set(BLOCK_POLL_INTERVAL_USECONDS,
-		__block_poll_tick, NULL);
+	__block_poll_timer = event_timer_add(BLOCK_POLL_INTERVAL_USECONDS,
+		FALSE, __block_poll_tick, NULL);
 }
 
 int
@@ -1331,66 +1334,4 @@ block_transit_messages_cleanup(void)
 {
 	for (small_idx_t i = 0; i < BLOCK_TRANSIT_MESSAGES_MAX; i++)
 		__block_transit_messages[i] = NULL;
-}
-
-int
-raw_block_future_buffer_add(raw_block_t *rb, size_t size)
-{
-	small_idx_t i;
-
-	if (size < sizeof(raw_block_t) + sizeof(raw_pact_t) + sizeof(pact_rx_t))
-		return (FALSE);
-
-	if ((block_idx(rb) > block_idx_last() + 20) ||
-		(block_idx(rb) <= block_idx_last() + 1))
-		return (FALSE);
-
-	if (raw_block_size(rb, size) != size)
-		return (FALSE);
-
-	for (i = 0; i < BLOCK_FUTURE_BUFFERS_MAX; i++)
-		if (!__block_future_buffer[i])
-			break;
-
-	if (i == BLOCK_FUTURE_BUFFERS_MAX)
-		return (FALSE);
-
-	__block_future_buffer[i] = rb;
-
-	return (TRUE);
-}
-
-static raw_block_t *
-raw_block_future_get(big_idx_t idx)
-{
-	big_idx_t idx_be;
-
-	idx_be = htobe64(idx);
-	for (small_idx_t i = 0; i < BLOCK_FUTURE_BUFFERS_MAX; i++)
-		if (__block_future_buffer[i])
-			if (__block_future_buffer[i]->index == idx_be)
-				return (__block_future_buffer[i]);
-
-	return (NULL);
-}
-
-static void
-raw_block_future_free(raw_block_t *rb)
-{
-	big_idx_t last_be;
-
-	last_be = raw_block_last(NULL)->index;
-	for (small_idx_t i = 0; i < BLOCK_FUTURE_BUFFERS_MAX; i++) {
-		if (__block_future_buffer[i]) {
-			if (__block_future_buffer[i]->index <= last_be) {
-				__block_future_buffer[i] = NULL;
-				free(__block_future_buffer[i]);
-			}
-		}
-
-		if (__block_future_buffer[i] == rb)
-			__block_future_buffer[i] = NULL;
-	}
-
-	free(rb);
 }

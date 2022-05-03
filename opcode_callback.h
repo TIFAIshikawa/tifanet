@@ -35,7 +35,6 @@
 
 extern int opcode_valid(message_t *msg);
 extern int opcode_payload_size_valid(message_t *msg, int direction);
-extern int opcode_message_ignore(event_info_t *info);
-extern void opcode_execute(event_info_t *info);
+extern void opcode_execute(event_fd_t *info);
 
 #endif /* __TIFA_OPCODE_CALLBACK_H */

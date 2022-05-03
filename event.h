@@ -35,41 +35,53 @@
 
 #include "config.h"
 
+typedef useconds_t mseconds_t;
+
 typedef enum {
 	EVENT_NONE		= 0,
 	EVENT_READ		= (1LL << 0),
-	EVENT_WRITE		= (1LL << 1),
-	EVENT_FREE_PAYLOAD	= (1LL << 8),
-	EVENT_TIMER		= (1LL << 9),
-} event_flags_t;
+	EVENT_WRITE		= (1LL << 1)
+} event_direction_t;
 
-struct __event_info;
-typedef struct __event_info event_info_t;
-typedef void (*event_callback_t)(event_info_t *info, event_flags_t eventflags);
-typedef int (*event_timeout_check_t)(event_info_t *info, time64_t timeout);
+typedef void (*event_callback_t)(void *info, void *payload);
 
-struct __event_info {
-	uint64_t ident;
-	flags_t flags;
-	time64_t time;
-	event_callback_t callback;
-	event_callback_t on_close;
-	event_timeout_check_t timeout_check;
+typedef struct __event_callback_info {
+	event_callback_t call;
 	void *payload;
-};
+} event_callback_info_t;
+
+typedef struct __event_fd {
+	event_callback_info_t callback;
+	struct timeval timeout;
+	int fd;
+	event_direction_t direction;
+} event_fd_t;
+
+typedef struct __event_timer {
+	event_callback_info_t callback;
+	struct timeval timeout;
+	mseconds_t interval;
+	int repeats;
+} event_timer_t;
 
 extern void event_handler_init(void);
-extern event_info_t *event_add(int fd, event_flags_t eventflags,
+extern event_fd_t *event_fd_add(int fd, event_direction_t direction,
 	event_callback_t callback, void *payload, size_t payload_size);
-extern void event_update(event_info_t *event, event_flags_t to_remove,
-	event_flags_t to_add);
-extern void event_remove(event_info_t *event);
+extern void event_fd_update(event_fd_t *event,
+	event_direction_t new_direction);
+extern void event_fd_remove(event_fd_t *event);
+extern int event_fd_get(event_fd_t *event);
+extern void event_fd_timeout_set(event_fd_t *event, mseconds_t msec_delay);
 
-extern event_info_t *timer_set(uint64_t msec_delay, event_callback_t callback,
-	void *payload);
-extern void timer_cancel(event_info_t *event);
-extern void timer_remove(event_info_t *event);
+extern void *event_payload_get(event_fd_t *event);
+extern void event_callback_set(event_fd_t *event, event_callback_t callback);
+
+extern event_timer_t *event_timer_add(uint64_t msec_delay, int repeats,
+	event_callback_t callback, void *payload);
+extern void event_timer_remove(event_timer_t *event);
 
 extern void event_loop_start(void);
+
+extern void event_loop_poll(void);
 
 #endif /* __TIFA_EVENT_H */

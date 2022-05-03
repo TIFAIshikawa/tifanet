@@ -193,6 +193,7 @@ main(int argc, char *argv[])
 	}
 
 	event_handler_init();
+	network_init();
 
 	blockchain_dns_verify();
 

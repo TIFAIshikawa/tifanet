@@ -145,8 +145,6 @@ extern int block_idx_in_transit(big_idx_t idx_be);
 extern void block_transit_message_add(message_t *msg);
 extern void block_transit_message_remove(message_t *msg);
 
-extern int raw_block_future_buffer_add(raw_block_t *rb, size_t size);
-
 extern void blockchain_rewind(big_idx_t to_idx);
 
 inline static int

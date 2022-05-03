@@ -51,8 +51,7 @@
 
 #define GETBLOCKS_MAX_BLOCKS 1500
 
-typedef void (*opcode_callback_t)(event_info_t *info);
-typedef int (*opcode_ignore_callback_t)(event_info_t *info);
+typedef void (*opcode_callback_t)(event_fd_t *info);
 
 typedef struct  __attribute__((__packed__)) __op_peerlist_response {
 	small_idx_t peers_ipv4_count;
@@ -67,46 +66,30 @@ typedef struct  __attribute__((__packed__)) __op_blockinfo_response {
 	signature_t signature;
 } op_blockinfo_response_t;
 
-static void op_peerlist(event_info_t *info);
-static void op_blockinfo(event_info_t *info);
-static void op_getblock(event_info_t *info);
-static void op_notarannounce(event_info_t *info);
-static void op_notardenounce(event_info_t *info);
-static void op_blockannounce(event_info_t *info);
-static void op_pact(event_info_t *info);
-static void op_getrxcache(event_info_t *info);
-static void op_getnotars(event_info_t *info);
+static void op_peerlist(event_fd_t *info);
+static void op_blockinfo(event_fd_t *info);
+static void op_getblock(event_fd_t *info);
+static void op_notarannounce(event_fd_t *info);
+static void op_blockannounce(event_fd_t *info);
+static void op_pact(event_fd_t *info);
+static void op_getrxcache(event_fd_t *info);
+static void op_getnotars(event_fd_t *info);
 
-static int op_blockannounce_ignore(event_info_t *info);
-
-static void op_peerlist_server(event_info_t *info, network_event_t *nev);
-static void op_peerlist_client(event_info_t *info, network_event_t *nev);
-static void op_blockinfo_server(event_info_t *info, network_event_t *nev);
-static void op_blockinfo_client(event_info_t *info, network_event_t *nev);
-static void op_getblock_server(event_info_t *info, network_event_t *nev);
-static void op_getblock_client(event_info_t *info, network_event_t *nev);
-static void op_pact_server(event_info_t *info, network_event_t *nev);
-static void op_pact_client(event_info_t *info, network_event_t *nev);
-static void op_getrxcache_server(event_info_t *info, network_event_t *nev);
-static void op_getrxcache_client(event_info_t *info, network_event_t *nev);
-static void op_getnotars_server(event_info_t *info, network_event_t *nev);
-static void op_getnotars_client(event_info_t *info, network_event_t *nev);
+static void op_peerlist_server(event_fd_t *info, network_event_t *nev);
+static void op_peerlist_client(event_fd_t *info, network_event_t *nev);
+static void op_blockinfo_server(event_fd_t *info, network_event_t *nev);
+static void op_blockinfo_client(event_fd_t *info, network_event_t *nev);
+static void op_getblock_server(event_fd_t *info, network_event_t *nev);
+static void op_getblock_client(event_fd_t *info, network_event_t *nev);
+static void op_pact_server(event_fd_t *info, network_event_t *nev);
+static void op_pact_client(event_fd_t *info, network_event_t *nev);
+static void op_getrxcache_server(event_fd_t *info, network_event_t *nev);
+static void op_getrxcache_client(event_fd_t *info, network_event_t *nev);
+static void op_getnotars_server(event_fd_t *info, network_event_t *nev);
+static void op_getnotars_client(event_fd_t *info, network_event_t *nev);
 
 static int __verify_blockinfo(op_blockinfo_response_t *info,
 	network_event_t *nev);
-
-opcode_ignore_callback_t opcode_ignore_callbacks[OP_MAXOPCODE] = {
-	NULL,			// OP_NONE
-	NULL,			// OP_PEERLIST
-	NULL,			// OP_BLOCKINFO
-	NULL,			// OP_GETBLOCK
-	NULL,			// OP_NOTARANNOUNCE
-	NULL,			// OP_NOTARDENOUNCE
-	op_blockannounce_ignore,// OP_BLOCKANNOUNCE
-	NULL,			// OP_PACT
-	NULL,			// OP_GETRXCACHE
-	NULL,			// OP_GETNOTARS
-};
 
 opcode_callback_t opcode_callbacks[OP_MAXOPCODE] = {
 	NULL,			// OP_NONE
@@ -114,7 +97,6 @@ opcode_callback_t opcode_callbacks[OP_MAXOPCODE] = {
 	op_blockinfo,		// OP_BLOCKINFO
 	op_getblock,		// OP_GETBLOCK
 	op_notarannounce,	// OP_NOTARANNOUNCE
-	op_notardenounce,	// OP_NOTARDENOUNCE
 	op_blockannounce,	// OP_BLOCKANNOUNCE
 	op_pact,		// OP_PACT
 	op_getrxcache,		// OP_GETRXCACHE
@@ -147,10 +129,9 @@ opcode_payload_size_valid(message_t *msg, int direction)
 		else
 			return (be32toh(msg->payload_size) >= 224 && be32toh(msg->payload_size) < MAXPACKETSIZE);
 	case OP_NOTARANNOUNCE:
-	case OP_NOTARDENOUNCE:
 		return (be32toh(msg->payload_size) == sizeof(public_key_t));
 	case OP_BLOCKANNOUNCE:
-		return (be32toh(msg->payload_size) >= 224 && be32toh(msg->payload_size) < MAXPACKETSIZE);
+		return (be32toh(msg->payload_size) == 0);
 	case OP_PACT:
 		if (direction == NETWORK_EVENT_TYPE_SERVER)
 			return (be32toh(msg->payload_size) >= sizeof(raw_pact_t) + sizeof(pact_tx_t) + sizeof(pact_rx_t) && be32toh(msg->payload_size) < MAXPACKETSIZE);
@@ -169,27 +150,15 @@ opcode_payload_size_valid(message_t *msg, int direction)
 	return (FALSE);
 }
 
-int
-opcode_message_ignore(event_info_t *info)
-{
-	message_t *msg;
-
-	msg = network_message(info);
-	if (opcode_ignore_callbacks[msg->opcode])
-		return (opcode_ignore_callbacks[msg->opcode](info));
-
-	return (FALSE);
-}
-
 void
-opcode_execute(event_info_t *info)
+opcode_execute(event_fd_t *info)
 {
 	message_t *msg;
 
 	msg = network_message(info);
 	if (msg->opcode == OP_NONE || msg->opcode >= OP_MAXOPCODE) {
 		lprintf("msg->opcode invalid: %d", msg->opcode);
-		event_remove(info);
+		event_fd_remove(info);
 
 		return;
 	}
@@ -198,10 +167,10 @@ opcode_execute(event_info_t *info)
 }
 
 static void
-op_peerlist(event_info_t *info)
+op_peerlist(event_fd_t *info)
 {
 	network_event_t *nev;
-	nev = info->payload;
+	nev = network_event(info);
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
@@ -216,7 +185,7 @@ op_peerlist(event_info_t *info)
 }
 
 static void
-op_peerlist_server(event_info_t *info, network_event_t *nev)
+op_peerlist_server(event_fd_t *info, network_event_t *nev)
 {
 	size_t size;
 	message_t *msg;
@@ -242,7 +211,7 @@ op_peerlist_server(event_info_t *info, network_event_t *nev)
 	ptr += ipv4_size;
 	bcopy(peerlist.list6, ptr, ipv6_size);
 
-	nev = info->payload;
+	nev = network_event(info);
 	nev->state = NETWORK_EVENT_STATE_HEADER;
 	nev->read_idx = 0;
 	nev->write_idx = 0;
@@ -251,13 +220,13 @@ op_peerlist_server(event_info_t *info, network_event_t *nev)
 	msg = network_message(info);
 	msg->payload_size = htobe32(size);
 
-	event_update(info, EVENT_READ, EVENT_WRITE);
-	info->callback = message_write;
-	message_write(info, EVENT_WRITE);
+	event_fd_update(info, EVENT_WRITE);
+	event_callback_set(info, message_write);
+	message_write(info, event_payload_get(info));
 }
 
 static void
-op_peerlist_client(event_info_t *info, network_event_t *nev)
+op_peerlist_client(event_fd_t *info, network_event_t *nev)
 {
 	uint8_t *buf;
 	message_t *msg;
@@ -287,16 +256,16 @@ op_peerlist_client(event_info_t *info, network_event_t *nev)
 	for (small_idx_t i = 0; i < response->peers_ipv6_count; i++)
 		peerlist_add_ipv6(addr6_list[i]);
 
-	message_cancel(info);
+	message_done(info);
 
 	peerlist_save();
 }
 
 static void
-op_blockinfo(event_info_t *info)
+op_blockinfo(event_fd_t *info)
 {
 	network_event_t *nev;
-	nev = info->payload;
+	nev = event_payload_get(info);
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
@@ -311,7 +280,7 @@ op_blockinfo(event_info_t *info)
 }
 
 static void
-op_blockinfo_server(event_info_t *info, network_event_t *nev)
+op_blockinfo_server(event_fd_t *info, network_event_t *nev)
 {
 	size_t size;
 	big_idx_t idx;
@@ -339,7 +308,7 @@ op_blockinfo_server(event_info_t *info, network_event_t *nev)
 	bcopy(block->prev_block_hash, blockinfo->prev_block_hash,
 		sizeof(hash_t));
 
-	nev = info->payload;
+	nev = event_payload_get(info);
 	nev->state = NETWORK_EVENT_STATE_HEADER;
 	nev->read_idx = 0;
 	nev->write_idx = 0;
@@ -348,9 +317,9 @@ op_blockinfo_server(event_info_t *info, network_event_t *nev)
 
 	msg->payload_size = htobe32(sizeof(op_blockinfo_response_t));
 
-	event_update(info, EVENT_READ, EVENT_WRITE);
-	info->callback = message_write;
-	message_write(info, EVENT_WRITE);
+	event_fd_update(info, EVENT_WRITE);
+	event_callback_set(info, message_write);
+	message_write(info, event_payload_get(info));
 }
 
 static int
@@ -380,7 +349,7 @@ __verify_blockinfo(op_blockinfo_response_t *info, network_event_t *nev)
 }
 
 static void
-op_blockinfo_client(event_info_t *info, network_event_t *nev)
+op_blockinfo_client(event_fd_t *info, network_event_t *nev)
 {
 	big_idx_t lcl_idx, rmt_idx;
 	op_blockinfo_response_t *blockinfo;
@@ -414,14 +383,14 @@ op_blockinfo_client(event_info_t *info, network_event_t *nev)
 #endif
 	}
 
-	message_cancel(info);
+	message_done(info);
 }
 
 static void
-op_getblock(event_info_t *info)
+op_getblock(event_fd_t *info)
 {
 	network_event_t *nev;
-	nev = info->payload;
+	nev = event_payload_get(info);
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
@@ -436,7 +405,7 @@ op_getblock(event_info_t *info)
 }
 
 static void
-op_getblock_server(event_info_t *info, network_event_t *nev)
+op_getblock_server(event_fd_t *info, network_event_t *nev)
 {
 	raw_block_t *block;
 	message_t *msg;
@@ -456,13 +425,13 @@ op_getblock_server(event_info_t *info, network_event_t *nev)
 	nev->userdata_size = sizeof(size);
 	msg->payload_size = htobe32(size);
 
-	event_update(info, EVENT_READ, EVENT_WRITE);
-	info->callback = message_write;
-	message_write(info, EVENT_WRITE);
+	event_fd_update(info, EVENT_WRITE);
+	event_callback_set(info, message_write);
+	message_write(info, event_payload_get(info));
 }
 
 static void
-op_getblock_client(event_info_t *info, network_event_t *nev)
+op_getblock_client(event_fd_t *info, network_event_t *nev)
 {
 	size_t size, bufsize, csz;
 	hash_t bh, ch;
@@ -529,7 +498,7 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 	if (p > 100)
 		blockchain_dns_verify();
 
-	message_cancel(info);
+	message_done(info);
 
 	if (notar_should_generate_block())
 		block_generate_next();
@@ -543,85 +512,40 @@ op_getblock_client(event_info_t *info, network_event_t *nev)
 }
 
 static void
-op_notarannounce(event_info_t *info)
+op_notarannounce(event_fd_t *info)
 {
 	network_event_t *nev;
 	public_key_t new_notar;
 
-	nev = info->payload;
+	nev = event_payload_get(info);
 	bcopy(nev->userdata, new_notar, sizeof(public_key_t));
 	notar_pending_add(new_notar);
 
-	message_cancel(info);
+	message_done(info);
 }
 
 static void
-op_notardenounce(event_info_t *info)
+op_blockannounce(event_fd_t *info)
 {
-	lprintf("OP_DENOUNCE not implemented");
-	message_cancel(info);
-}
-
-static void
-op_blockannounce(event_info_t *info)
-{
-	network_event_t *nev;
-	raw_block_t *block;
-	big_idx_t index;
+	big_idx_t index, last;
 	message_t *msg;
-	size_t size;
-
-	nev = info->payload;
-	block = nev->userdata;
-	index = block_idx(block);
-
-	msg = network_message(info);
-	size = be32toh(msg->payload_size);
-
-	if (raw_block_validate(nev->userdata, size)) {
-		lprintf("received block %ju, size %ld", index, size);
-
-		raw_block_process(block, size);
-
-		// The received block may be an incomplete denouncement
-		// block, in which case it's not saved yet. If this is
-		// an incomplete denouncement block, it will be broadcast
-		// elsewhere.
-		if (block_idx_last() == index)
-			raw_block_broadcast(index);
-
-		if (notar_should_generate_block())
-			block_generate_next();
-	} else {
-		if (raw_block_future_buffer_add(nev->userdata, size))
-			nev->userdata = NULL;
-	}
-
-	message_cancel(info);
-}
-
-static int
-op_blockannounce_ignore(event_info_t *info)
-{
-	message_t *msg;
-	int res;
 
 	if (ignorelist_is_ignored(&network_event(info)->remote_addr))
-		return (TRUE);
+		return;
 
 	msg = network_message(info);
-	if (!(res = block_exists(be64toh(msg->userinfo))))
-		if (!(res = block_idx_in_transit(msg->userinfo)))
-			block_transit_message_add(msg);
+	index = be64toh(msg->userinfo);
 
-	return (res);
+	last = block_idx_last();
+	if (last < index)
+		message_send(info, OP_GETBLOCK, NULL, 0, htobe64(last + 1));
 }
 
 static void
-op_pact(event_info_t *info)
+op_pact(event_fd_t *info)
 {
 	network_event_t *nev;
-	nev = info->payload;
+	nev = event_payload_get(info);
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
@@ -636,7 +560,7 @@ op_pact(event_info_t *info)
 }
 
 static void
-op_pact_server(event_info_t *info, network_event_t *nev)
+op_pact_server(event_fd_t *info, network_event_t *nev)
 {
 	size_t size;
 	time64_t tm;
@@ -676,9 +600,9 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 	msg->payload_size = 0;
 	msg->userinfo = htobe64(err);
 
-	event_update(info, EVENT_READ, EVENT_WRITE);
-	info->callback = message_write;
-	message_write(info, EVENT_WRITE);
+	event_fd_update(info, EVENT_WRITE);
+	event_callback_set(info, message_write);
+	message_write(info, event_payload_get(info));
 
 	pacts_pending(&sz);
 	if (notar_should_generate_block())
@@ -686,16 +610,16 @@ op_pact_server(event_info_t *info, network_event_t *nev)
 }
 
 static void
-op_pact_client(event_info_t *info, network_event_t *nev)
+op_pact_client(event_fd_t *info, network_event_t *nev)
 {
 	message_cancel(info);
 }
 
 static void
-op_getrxcache(event_info_t *info)
+op_getrxcache(event_fd_t *info)
 {
 	network_event_t *nev;
-	nev = info->payload;
+	nev = event_payload_get(info);
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
@@ -710,7 +634,7 @@ op_getrxcache(event_info_t *info)
 }
 
 static void
-op_getrxcache_server(event_info_t *info, network_event_t *nev)
+op_getrxcache_server(event_fd_t *info, network_event_t *nev)
 {
 	message_t *msg;
 	size_t size;
@@ -741,27 +665,27 @@ op_getrxcache_server(event_info_t *info, network_event_t *nev)
 	nev->userdata_size = size;
 	msg->payload_size = htobe32(nev->userdata_size);
 
-	event_update(info, EVENT_READ, EVENT_WRITE);
-	info->callback = message_write;
-	message_write(info, EVENT_WRITE);
+	event_fd_update(info, EVENT_WRITE);
+	event_callback_set(info, message_write);
+	message_write(info, event_payload_get(info));
 }
 
 static void
-op_getrxcache_client(event_info_t *info, network_event_t *nev)
+op_getrxcache_client(event_fd_t *info, network_event_t *nev)
 {
 	message_t *msg;
 
 	msg = network_message(info);
 	cache_write("rxcache", nev->userdata, be32toh(msg->payload_size));
 
-	message_cancel(info);
+	message_done(info);
 }
 
 static void
-op_getnotars(event_info_t *info)
+op_getnotars(event_fd_t *info)
 {
 	network_event_t *nev;
-	nev = info->payload;
+	nev = event_payload_get(info);
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
@@ -776,7 +700,7 @@ op_getnotars(event_info_t *info)
 }
 
 static void
-op_getnotars_server(event_info_t *info, network_event_t *nev)
+op_getnotars_server(event_fd_t *info, network_event_t *nev)
 {
 	message_t *msg;
 	size_t size;
@@ -807,13 +731,13 @@ op_getnotars_server(event_info_t *info, network_event_t *nev)
 	nev->userdata_size = size;
 	msg->payload_size = htobe32(nev->userdata_size);
 
-	event_update(info, EVENT_READ, EVENT_WRITE);
-	info->callback = message_write;
-	message_write(info, EVENT_WRITE);
+	event_fd_update(info, EVENT_WRITE);
+	event_callback_set(info, message_write);
+	message_write(info, event_payload_get(info));
 }
 
 static void
-op_getnotars_client(event_info_t *info, network_event_t *nev)
+op_getnotars_client(event_fd_t *info, network_event_t *nev)
 {
 	message_t *msg;
 
@@ -821,5 +745,5 @@ op_getnotars_client(event_info_t *info, network_event_t *nev)
 
 	cache_write("notarscache", nev->userdata, be32toh(msg->payload_size));
 
-	message_cancel(info);
+	message_done(info);
 }

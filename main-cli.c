@@ -427,7 +427,7 @@ check_amount(const char *amount)
 }
 
 static void
-send_callback(event_info_t *info, event_flags_t eventflags)
+send_callback(void *info, void *payload)
 {
 	network_event_t *nev;
 	userinfo_t userinfo;
@@ -577,6 +577,7 @@ opt_send(int argc, char *argv[])
 	peerlist_load();
 
 	event_handler_init();
+	network_init();
 
 	send_count = message_broadcast_with_callback(OP_PACT,
 			raw_pact, tsize, 0, send_callback);

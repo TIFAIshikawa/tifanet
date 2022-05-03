@@ -43,6 +43,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "log.h"
+#include "vlist.h"
 #include "event.h"
 #include "notar.h"
 #include "endian.h"
@@ -68,7 +69,6 @@ const char *const opcode_names[OP_MAXOPCODE] = {
 	"OP_BLOCKINFO",
 	"OP_GETBLOCK",
 	"OP_NOTARANNOUNCE",
-	"OP_NOTARDENOUNCE",
 	"OP_BLOCKANNOUNCE",
 	"OP_PACT",
 	"OP_GETRXCACHE",
@@ -77,17 +77,57 @@ const char *const opcode_names[OP_MAXOPCODE] = {
 
 static struct ifaddrs *__ifaddrs = NULL;
 
-static void accept_connection(event_info_t *, event_flags_t);
-static void message_event_on_close(event_info_t *, event_flags_t);
-static int message_event_timeout_check(event_info_t *, time64_t timeout);
-static int message_event_connect_timeout_check(event_info_t *,
-	time64_t timeout);
-static int message_header_validate(event_info_t *info);
+typedef struct {
+	vlist_t *active;
+	vlist_t *inactive;
+} peers_t;
+static peers_t __peers;
 
-static event_info_t *__listen_info_ipv4 = NULL;
-static event_info_t *__listen_info_ipv6 = NULL;
+static void connection_accept(void *, void *payload);
+static event_fd_t *__message_send(struct sockaddr_storage *addr,
+	opcode_t opcode, void *payload, small_idx_t size, userinfo_t info);
+static int message_header_validate(event_fd_t *info);
 
-static void socket_set_async(int fd)
+static event_fd_t *__listen_info_ipv4 = NULL;
+static event_fd_t *__listen_info_ipv6 = NULL;
+
+void
+network_init(void)
+{
+	__peers.active = vlist_init(10);
+	__peers.inactive = vlist_init(10);
+}
+
+static int
+sockaddr_equals(struct sockaddr_storage *s1, struct sockaddr_storage *s2)
+{
+	struct sockaddr_in *a14, *a24;
+	struct sockaddr_in6 *a16, *a26;
+
+	switch (s1->ss_family) {
+	case AF_INET:
+		a14 = (struct sockaddr_in *)s1;
+		a24 = (struct sockaddr_in *)s2;
+		if (s2->ss_family != AF_INET)
+			return (FALSE);
+		return (a14->sin_addr.s_addr == a24->sin_addr.s_addr);
+	case AF_INET6:
+		a16 = (struct sockaddr_in6 *)s1;
+		a26 = (struct sockaddr_in6 *)s2;
+		if (s2->ss_family != AF_INET6)
+			return (FALSE);
+		return (memcmp(&a16->sin6_addr, &a26->sin6_addr,
+			sizeof(struct in6_addr)) == 0);
+	default:
+		lprintf("sockaddr_equals: unsupported ss_family: %d",
+			s1->ss_family);
+	}
+
+	return (FALSE);
+}
+
+static void
+socket_set_async(int fd)
 {
 	int opt;
 
@@ -100,20 +140,23 @@ static void socket_set_async(int fd)
 }
 
 static void
-socket_set_timeout(int fd, unsigned int sec_timeout)
+peer_set_active(event_fd_t *event)
 {
-	int timeout;
-	struct timeval timeout_tv;
+	network_event_t *nev;
 
-	timeout = sec_timeout * 1000;
-	setsockopt(fd, 6, 18, &timeout, sizeof(timeout));
+	nev = network_event(event);
+	vlist_item_add(__peers.active, event);
+	vlist_item_remove(__peers.inactive, event);
+}
 
-	timeout_tv.tv_sec = sec_timeout;
-	timeout_tv.tv_usec = 0;
-	setsockopt(fd, SOL_SOCKET,SO_RCVTIMEO, (void *)&timeout_tv,
-		sizeof(timeout_tv));
-	setsockopt(fd, SOL_SOCKET,SO_SNDTIMEO, (void *)&timeout_tv,
-		sizeof(timeout_tv));
+static void
+peer_set_inactive(event_fd_t *event)
+{
+	network_event_t *nev;
+
+	nev = network_event(event);
+	vlist_item_remove(__peers.active, event);
+	vlist_item_add(__peers.inactive, event);
 }
 
 char *
@@ -170,10 +213,10 @@ socket_create(int domain)
 	return (res);
 }
 
-static event_info_t *
+static event_fd_t *
 __listen_socket_open(struct sockaddr_storage *addr)
 {
-	event_info_t *res;
+	event_fd_t *res;
 	socklen_t len;
 	char *iptxt;
 	int opt;
@@ -211,8 +254,7 @@ __listen_socket_open(struct sockaddr_storage *addr)
 			strerror(errno));
 	}
 
-	res = event_add(fd, EVENT_READ, accept_connection,
-				NULL, 0);
+	res = event_fd_add(fd, EVENT_READ, connection_accept, NULL, 0);
 
 	lprintf("listening for %s connections...", iptxt);
 
@@ -220,7 +262,7 @@ __listen_socket_open(struct sockaddr_storage *addr)
 }
 
 void
-listen_socket_open()
+listen_socket_open(void)
 {
 	struct sockaddr_storage *s;
 	struct sockaddr_in6 a6;
@@ -246,127 +288,75 @@ listen_socket_open()
 }
 
 void
-accept_connection(event_info_t *info, event_flags_t eventtype)
+connection_accept(void *info, void *payload)
 {
 	struct sockaddr_storage addr;
 	network_event_t nev;
-	event_info_t *event;
+	event_fd_t *event;
 	socklen_t len;
-	int fd;
+	int sfd, fd;
 
 	len = sizeof(struct sockaddr_storage);
-	if ((fd = accept(info->ident, (struct sockaddr *)&addr, &len)) == -1)
-		FAIL(EX_TEMPFAIL, "accept_connection: accept: %s",
+	sfd = event_fd_get((event_fd_t *)info);
+	if ((fd = accept(sfd, (struct sockaddr *)&addr, &len)) == -1)
+		FAIL(EX_TEMPFAIL, "connection_accept: accept: %s",
 				  strerror(errno));
-
-//	if (banlist_is_banned(&addr)) {
-//		close(fd);
-//		return;
-//	}
 
 	socket_set_async(fd);
 
-	socket_set_timeout(fd, 10);
-
 	bzero(&nev, sizeof(network_event_t));
 	bcopy(&addr, &nev.remote_addr, len);
-	nev.remote_addr_len = len;
 	nev.type = NETWORK_EVENT_TYPE_SERVER;
 	nev.state = NETWORK_EVENT_STATE_HEADER;
-	event = event_add(fd, EVENT_READ | EVENT_FREE_PAYLOAD,
+	event = event_fd_add(fd, EVENT_READ,
 		message_read, &nev, sizeof(network_event_t));
-	event->on_close = message_event_on_close;
-	event->timeout_check = message_event_timeout_check;
+	event_fd_timeout_set(event, 20000);
 }
 
 void
-message_cancel(event_info_t *info)
-{
-	event_remove(info);
-}
-
-static void
-message_event_on_close(event_info_t *info, event_flags_t flags)
+message_done(event_fd_t *info)
 {
 	network_event_t *nev;
 	message_t *msg;
-	opcode_t opcode;
 
-	nev = info->payload;
+	if (errno)
+		return message_cancel(info);
+
+	nev = network_event(info);
 	msg = network_message(info);
-
-	block_transit_message_remove(msg);
-
-	if (nev->on_close)
-		nev->on_close(info, flags);
-
-	if (!nev->userdata)
-		return;
-
-	opcode = msg->opcode;
-	if ((nev->type == NETWORK_EVENT_TYPE_SERVER && opcode == OP_GETBLOCK) ||
-		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_BLOCKANNOUNCE) ||
-		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_NOTARANNOUNCE) ||
-		(nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_PACT)) {
-#ifdef DEBUG_ALLOC
-		lprintf("NOT FREEING USERDATA %p", nev->userdata);
-#endif
+	if (message_flags(msg) & MESSAGE_FLAG_PEER) {
+lprintf("WAITMODE %s %d %p", peername(&network_event(info)->remote_addr), event_fd_get(info), info);
+		event_fd_timeout_set(info, 60000);
+		event_fd_update(info, EVENT_READ);
+		event_callback_set(info, message_read);
+		nev->type = NETWORK_EVENT_TYPE_SERVER;
+		nev->state = NETWORK_EVENT_STATE_HEADER;
+		nev->userdata = NULL; // TODO ERHE FREE!!!!!
+		nev->userdata_size = 0;
+		peer_set_inactive(info);
 		return;
 	}
-
-#ifdef DEBUG_ALLOC
-	lprintf("-USERDATA %p MESSAGE_READ", nev->userdata);
-#endif
-	free(nev->userdata);
-
-	if (nev->type == NETWORK_EVENT_TYPE_CLIENT && opcode == OP_GETBLOCK)
-		getblocks(0);
 }
 
-static int
-message_event_timeout_check(event_info_t *info, time64_t timeout)
+void
+message_cancel(event_fd_t *info)
 {
-#ifdef DEBUG_NETWORK
-	if (timeout > MESSAGE_TIMEOUT)
-		lprintf("message_event_timeout_check: %s: timeout after "
-			"%d seconds",
-			peername(&network_event(info)->remote_addr),
-			MESSAGE_TIMEOUT);
-#endif
-	if (timeout <= MESSAGE_TIMEOUT)
-		return (FALSE);
+	vlist_item_remove(__peers.active, info);
+	vlist_item_remove(__peers.inactive, info);
 
-	peerlist_remove(&network_event(info)->remote_addr);
-
-	return (TRUE);
+lprintf("CANCEL %s %d %p", peername(&network_event(info)->remote_addr), event_fd_get(info), info);
+	close(event_fd_get(info));
+	event_fd_remove(info);
 }
 
 static int
-message_event_connect_timeout_check(event_info_t *info, time64_t timeout)
-{
-#ifdef DEBUG_NETWORK
-	if (timeout > CONNECT_TIMEOUT)
-		lprintf("message_event_connect_timeout_check: %s: timeout "
-			"after %d seconds",
-			peername(&network_event(info)->remote_addr),
-			CONNECT_TIMEOUT);
-#endif
-	if (timeout <= CONNECT_TIMEOUT)
-		return (FALSE);
-
-	peerlist_remove(&network_event(info)->remote_addr);
-
-	return (TRUE);
-}
-
-static int
-message_header_validate(event_info_t *info)
+message_header_validate(event_fd_t *info)
 {
 	network_event_t *nev;
 	small_idx_t size;
 	message_t *msg;
 
-	nev = info->payload;
+	nev = network_event(info);
 	msg = &nev->message_header;
 
 	if (memcmp(msg->magic, TIFA_IDENT, sizeof(magic_t)) != 0) {
@@ -391,44 +381,50 @@ message_header_validate(event_info_t *info)
 	}
 #ifdef DEBUG_NETWORK
 	if (nev->type == NETWORK_EVENT_TYPE_SERVER)
-		lprintf("msg(fd=%d op=%s us=%lld sz=%ld) <- %s", info->ident,
+		lprintf("recv(ip=%s fd=%d op=%s us=%lld sz=%ld)",
+			peername(&nev->remote_addr), event_fd_get(info),
 			opcode_names[msg->opcode], be64toh(msg->userinfo),
-			size, peername(&nev->remote_addr));
+			size);
 #endif
 
 	return (TRUE);
 }
 
 void
-message_read(event_info_t *info, event_flags_t eventtype)
+message_read(void *_info, void *payload)
 {
 	network_event_t *nev;
+	event_fd_t *info;
+	ssize_t r, want;
 	message_t *msg;
 	char *ptr;
-	int want;
-	int r;
 
-	if (eventtype & EVENT_WRITE)
+	info = (event_fd_t *)_info;
+	nev = network_event(info);
+	msg = network_message(info);
+
+	if (errno) {
+		peerlist_remove(&nev->remote_addr);
+		message_cancel(info);
 		return;
+	}
 
-	info->timeout_check = message_event_timeout_check;
-	nev = info->payload;
-	msg = &nev->message_header;
 	switch (nev->state) {
 	case NETWORK_EVENT_STATE_HEADER:
 		ptr = (void *)&nev->message_header + nev->read_idx;
 		want = sizeof(message_t) - nev->read_idx;
-		if ((r = read(info->ident, ptr, want)) <= 0) {
+		if ((r = read(event_fd_get(info), ptr, want)) <= 0) {
 			if (errno != EAGAIN && errno != EWOULDBLOCK &&
 				errno != EINTR)
 				message_cancel(info);
 			return;
 		}
+		if (!nev->read_idx)
+			peer_set_active(info);
+
 		nev->read_idx += r;
 		if (nev->read_idx == sizeof(message_t)) {
 			if (!message_header_validate(info))
-				return message_cancel(info);
-			if (opcode_message_ignore(info))
 				return message_cancel(info);
 
 			if (msg->payload_size)
@@ -438,18 +434,18 @@ message_read(event_info_t *info, event_flags_t eventtype)
 #ifdef DEBUG_ALLOC
 			lprintf("+USERDATA %p MESSAGE_READ", nev->userdata);
 #endif
-			if (be16toh(msg->flags) & MESSAGE_FLAG_PEER)
+			if (message_flags(msg) & MESSAGE_FLAG_PEER)
 				peerlist_add(&nev->remote_addr);
 			nev->read_idx = 0;
 			nev->state = NETWORK_EVENT_STATE_BODY;
-			message_read(info, eventtype);
+			message_read(info, payload);
 		}
 		break;
 	case NETWORK_EVENT_STATE_BODY:
 		ptr = (void *)nev->userdata + nev->read_idx;
 		want = be32toh(msg->payload_size) - nev->read_idx;
 		if (nev->read_idx != want) {
-			if ((r = read(info->ident, ptr, want)) == -1) {
+			if ((r = read(event_fd_get(info), ptr, want)) <= 0) {
 				if (errno != EAGAIN && errno != EWOULDBLOCK) {
 					message_cancel(info);
 					return;
@@ -460,7 +456,9 @@ message_read(event_info_t *info, event_flags_t eventtype)
 		}
 
 		if (nev->read_idx == be32toh(msg->payload_size)) {
-			event_update(info, EVENT_READ, EVENT_WRITE);
+lprintf("<rcv(ip=%s fd=%d op=%s us=%lld sz=%ld)",
+peername(&nev->remote_addr), event_fd_get(info),
+opcode_names[msg->opcode], be64toh(msg->userinfo), be32toh(msg->payload_size));
 			opcode_execute(info);
 		}
 		break;
@@ -471,40 +469,47 @@ message_read(event_info_t *info, event_flags_t eventtype)
 }
 
 void
-message_write(event_info_t *info, event_flags_t eventtype)
+message_write(void *_info, void *payload)
 {
 	network_event_t *nev;
+	event_fd_t *info;
+	ssize_t r, want;
 	message_t *msg;
 	char *ptr;
-	int want;
-	int r;
 
-	if (eventtype & EVENT_READ)
-		return;
-
-	info->timeout_check = message_event_timeout_check;
-	nev = info->payload;
+	info = (event_fd_t *)_info;
+	nev = network_event(info);
 	msg = &nev->message_header;
+
+	if (errno) {
+		peerlist_remove(&nev->remote_addr);
+		message_cancel(info);
+		return;
+	}
+
 	switch (nev->state) {
 	case NETWORK_EVENT_STATE_HEADER:
 		ptr = (void *)&nev->message_header + nev->write_idx;
 		want = sizeof(message_t) - nev->write_idx;
-		if ((r = write(info->ident, ptr, want)) <= 0) {
+		if ((r = write(event_fd_get(info), ptr, want)) <= 0) {
 			message_cancel(info);
 			return;
 		}
+		if (!nev->write_idx)
+			peer_set_active(info);
+
 		nev->write_idx += r;
 		if (nev->write_idx == sizeof(message_t)) {
 			nev->write_idx = 0;
 			nev->state = NETWORK_EVENT_STATE_BODY;
-			message_write(info, eventtype);
+			message_write(info, payload);
 		}
 		break;
 	case NETWORK_EVENT_STATE_BODY:
 		ptr = (void *)nev->userdata + nev->write_idx;
 		want = be32toh(msg->payload_size) - nev->write_idx;
 		if (nev->write_idx != want) {
-			if ((r = write(info->ident, ptr, want)) <= 0) {
+			if ((r = write(event_fd_get(info), ptr, want)) <= 0) {
 				message_cancel(info);
 				return;
 			}
@@ -512,12 +517,15 @@ message_write(event_info_t *info, event_flags_t eventtype)
 		}
 
 		if (nev->write_idx == be32toh(msg->payload_size)) {
-			event_update(info, EVENT_WRITE, EVENT_READ);
+lprintf("<snd(ip=%s fd=%d op=%s us=%lld sz=%ld)",
+peername(&nev->remote_addr), event_fd_get(info),
+opcode_names[msg->opcode], be64toh(msg->userinfo), be32toh(msg->payload_size));
+			event_fd_update(info, EVENT_READ);
 			if (nev->type == NETWORK_EVENT_TYPE_CLIENT) {
 				nev->state = NETWORK_EVENT_STATE_HEADER;
-				info->callback = message_read;
+				event_callback_set(info, message_read);
 			} else
-				message_cancel(info);
+				message_done(info);
 		}
 		break;
 	default:
@@ -526,13 +534,13 @@ message_write(event_info_t *info, event_flags_t eventtype)
 	}
 }
 
-static event_info_t *
+static event_fd_t *
 request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 {
 	struct sockaddr_in6 *a6;
 	struct sockaddr_in *a4;
 	network_event_t nev;
-	event_info_t *res;
+	event_fd_t *res;
 	socklen_t len;
 	int fd;
 
@@ -571,33 +579,30 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 	bcopy(message, &nev.message_header, sizeof(message_t));
 	nev.userdata = payload;
 	bcopy(addr, &nev.remote_addr, len);
-	nev.remote_addr_len = len;
 	nev.userdata_size = be32toh(message->payload_size);
 
-	res = event_add(fd, EVENT_WRITE | EVENT_FREE_PAYLOAD,
-			message_write, &nev, sizeof(network_event_t));
-	res->on_close = message_event_on_close;
-	res->timeout_check = message_event_connect_timeout_check;
+	res = event_fd_add(fd, EVENT_WRITE, message_write, &nev,
+			sizeof(network_event_t));
+lprintf("CONNECT %s %d %p", peername(&network_event(res)->remote_addr), event_fd_get(res), res);
+	event_fd_timeout_set(res, 2000);
 #ifdef DEBUG_ALLOC
 	lprintf("+USERDATA %p REQUEST_SEND", nev.userdata);
 #endif
-
-	socket_set_timeout(fd, 10);
 
 	return (res);
 
 }
 
 network_event_t *
-network_event(event_info_t *info)
+network_event(event_fd_t *info)
 {
-	return (info->payload);
+	return (event_payload_get(info));
 }
 
 message_t *
-network_message(event_info_t *info)
+network_message(event_fd_t *info)
 {
-	return &network_event(info)->message_header;
+	return (&network_event(info)->message_header);
 }
 
 static void
@@ -615,20 +620,64 @@ message_init(message_t *msg, opcode_t opcode, small_idx_t size, userinfo_t info)
 	msg->payload_size = htobe32(size);
 }
 
-static event_info_t *
-message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
+void
+message_send(event_fd_t *event, opcode_t opcode, void *payload,
 	small_idx_t size, userinfo_t info)
 {
-	event_info_t *res;
+	message_t *msg;
+	network_event_t *nev;
+
+	event_fd_update(event, EVENT_WRITE);
+	peer_set_active(event);
+
+	nev = network_event(event);
+	msg = network_message(event);
+lprintf("REUSING %s %d %p", peername(&nev->remote_addr), event_fd_get(event), event);
+
+	message_init(msg, opcode, size, info);
+	nev->type = NETWORK_EVENT_TYPE_CLIENT;
+	nev->state = NETWORK_EVENT_STATE_HEADER;
+	nev->userdata = payload;
+	nev->userdata_size = be32toh(msg->payload_size);
+	event_fd_timeout_set(event, 20000);
+
+	event_callback_set(event, message_write);
+}
+
+static event_fd_t *
+__message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
+	small_idx_t size, userinfo_t info)
+{
+	event_fd_t *e, *res = NULL;
+	network_event_t *nev;
 	message_t msg;
 
-	message_init(&msg, opcode, size, info);
+	for (size_t i = 0; i < vlist_size(__peers.active); i++) {
+		e = vlist_item_get(__peers.active, i);
+		nev = network_event(e);
+		// this connection is busy
+		if (sockaddr_equals(&nev->remote_addr, addr))
+			return (NULL);
+	}
+	for (size_t i = 0; i < vlist_size(__peers.inactive); i++) {
+		e = vlist_item_get(__peers.inactive, i);
+		nev = network_event(e);
+		if (sockaddr_equals(&nev->remote_addr, addr)) {
+			res = e;
+			message_send(res, opcode, payload, size, info);
+			break;
+		}
+	}
+	if (!res) {
+		message_init(&msg, opcode, size, info);
+		res = request_send(addr, &msg, payload);
+	}
 
-	if ((res = request_send(addr, &msg, payload))) {
+	if (res) {
 #ifdef DEBUG_NETWORK
-		lprintf("msg(fd=%d op=%s us=%lld sz=%ld) -> %s", res->ident,
-			opcode_names[opcode], be64toh(info), size,
-			peername(addr));
+		lprintf("send(ip=%s fd=%d op=%s us=%lld sz=%ld)",
+			peername(addr), event_fd_get(res),
+			opcode_names[opcode], be64toh(info), size);
 #endif
 		return (res);
 	}
@@ -636,21 +685,41 @@ message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 	return (NULL);
 }
 
-event_info_t *
+event_fd_t *
+message_send_random_with_callback(opcode_t opcode, void *payload,
+	small_idx_t size, userinfo_t info, event_callback_t callback)
+{
+	event_fd_t *res;
+	struct sockaddr_storage addr;
+
+	if ((res = vlist_item_random(__peers.inactive))) {
+		message_send(res, opcode, payload, size, info);
+	} else {
+		// attempt to get a non-local random IP address
+		for (int i = 0; i < 3; i++) {
+			if (!peerlist_address_random(&addr))
+				return (NULL);
+			if (!is_local_interface_address(&addr))
+				break;
+		}
+		res = __message_send(&addr, opcode, payload, size, info);
+	}
+
+	if (res) {
+		if (callback)
+			message_set_callback(res, callback);
+		peer_set_active(res);
+	}
+
+	return (res);
+}
+
+event_fd_t *
 message_send_random(opcode_t opcode, void *payload, small_idx_t size,
 	userinfo_t info)
 {
-	struct sockaddr_storage addr;
-
-	// attempt to get a non-local random IP address for at max 3 times
-	for (int i = 0; i < 3; i++) {
-		if (!peerlist_address_random(&addr))
-			return (NULL);
-		if (!is_local_interface_address(&addr))
-			break;
-	}
-
-	return (message_send(&addr, opcode, payload, size, info));
+	return (message_send_random_with_callback(opcode, payload, size,
+						  info, NULL));
 }
 
 static size_t
@@ -659,11 +728,11 @@ message_send_list_with_callback(struct sockaddr_storage *addrs, size_t naddrs,
 	event_callback_t callback)
 {
 	size_t res;
-	event_info_t *e;
+	event_fd_t *e;
 
 	res = 0;
 	for (size_t i = 0; i < naddrs; i++) {
-		if ((e = message_send(&addrs[i], opcode, payload, size,
+		if ((e = __message_send(&addrs[i], opcode, payload, size,
 			info))) {
 			message_set_callback(e, callback);
 			res++;
@@ -673,24 +742,12 @@ message_send_list_with_callback(struct sockaddr_storage *addrs, size_t naddrs,
 	return (res);
 }
 
-event_info_t *
-message_send_random_with_callback(opcode_t opcode, void *payload,
-	small_idx_t size, userinfo_t info, event_callback_t callback)
-{
-	event_info_t *res;
-
-	if ((res = message_send_random(opcode, payload, size, info)))
-		message_set_callback(res, callback);
-
-	return (res);
-}
-
 void
-message_set_callback(event_info_t *info, event_callback_t callback)
+message_set_callback(event_fd_t *info, event_callback_t callback)
 {
 	network_event_t *nev;
 
-	nev = info->payload;
+	nev = network_event(info);
 
 	nev->on_close = callback;
 }

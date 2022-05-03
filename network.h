@@ -35,6 +35,7 @@
 #include <netinet/in.h>
 #include "node.h"
 #include "event.h"
+#include "endian.h"
 #include "address.h"
 
 typedef char magic_t[4];
@@ -52,11 +53,6 @@ enum opcodes {
 
 	OP_NOTARANNOUNCE,		// Announce self to the network,
 					// if we want to be a notar.
-	OP_NOTARDENOUNCE,		// Broadcast when notar gives false
-					// information. This notar is
-					// subsequently blocked from
-					// the network, if the reason
-					// was correct.
 
 	OP_BLOCKANNOUNCE,		// Announce the next block to
 					// the network.
@@ -99,7 +95,6 @@ typedef struct __network_event {
 	uint16_t state;
 	uint16_t type;
 	struct sockaddr_storage remote_addr;
-	socklen_t remote_addr_len;
 	message_t message_header;
 	size_t read_idx;
 	size_t write_idx;
@@ -116,28 +111,36 @@ extern int network_is_ipv6_capable(void);
 extern int is_local_interface_address(struct sockaddr_storage *addr);
 extern int is_nonroutable_address(struct sockaddr_storage *addr);
 
+extern void network_init(void);
 extern void listen_socket_open(void);
 
-extern network_event_t *network_event(event_info_t *info);
-extern message_t *network_message(event_info_t *info);
+extern network_event_t *network_event(event_fd_t *info);
+extern message_t *network_message(event_fd_t *info);
 
-extern event_info_t *message_send_random(opcode_t opcode, void *payload,
+extern void message_send(event_fd_t *event, opcode_t opcode, void *payload,
 	small_idx_t size, userinfo_t info);
-extern event_info_t *message_send_random_with_callback(opcode_t opcode,
+extern event_fd_t *message_send_random(opcode_t opcode, void *payload,
+	small_idx_t size, userinfo_t info);
+extern event_fd_t *message_send_random_with_callback(opcode_t opcode,
 	void *payload, small_idx_t size, userinfo_t info,
 	event_callback_t callback);
-extern void message_set_callback(event_info_t *event,
-	event_callback_t callback);
-extern void message_cancel(event_info_t *info);
+extern void message_set_callback(event_fd_t *event, event_callback_t callback);
+extern void message_done(event_fd_t *info);
+extern void message_cancel(event_fd_t *info);
 
 extern size_t message_broadcast(opcode_t opcode, void *payload,
 	small_idx_t size, userinfo_t info);
 extern size_t message_broadcast_with_callback(opcode_t opcode, void *payload,
 	small_idx_t size, userinfo_t info, event_callback_t callback);
 
-extern void message_read(event_info_t *, event_flags_t);
-extern void message_write(event_info_t *, event_flags_t);
+extern void message_read(void *, void *payload);
+extern void message_write(void *, void *payload);
 
 extern void daemon_start(void);
 
+static inline int
+message_flags(message_t *msg)
+{
+	return (be16toh(msg->flags));
+}
 #endif /* __TIFA_NETWORK_H */

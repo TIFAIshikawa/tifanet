@@ -83,8 +83,8 @@ ignorelist_t ignorelist = {
 
 static const char *__bootstrap_server = "bootstrap.%s.tifa.network";
 
-static event_info_t *__peerlist_timer = NULL;
-static event_info_t *__peerlist_save_timer = NULL;
+static event_timer_t *__peerlist_timer = NULL;
+static event_timer_t *__peerlist_save_timer = NULL;
 
 static void peerlist_bootstrap(void);
 static void ignorelist_init(void);
@@ -168,7 +168,7 @@ peerlist_load(void)
 }
 
 static void
-__peerlist_save_tick(event_info_t *info, event_flags_t eventtype)
+__peerlist_save_tick(void *info, void *payload)
 {
 	__peerlist_save_timer = NULL;
 	peerlist_save_sync();
@@ -180,8 +180,8 @@ peerlist_save(void)
 	if (__peerlist_save_timer)
 		return;
 
-	__peerlist_save_timer = timer_set(PEERLIST_SAVE_DELAY_USECONDS,
-		__peerlist_save_tick, NULL);
+	__peerlist_save_timer = event_timer_add(PEERLIST_SAVE_DELAY_USECONDS,
+		FALSE, __peerlist_save_tick, NULL);
 }
 
 void
@@ -230,7 +230,7 @@ peerlist_save_sync(void)
 }
 
 static void
-__peerlist_request_tick(event_info_t *info, event_flags_t eventtype)
+__peerlist_request_tick(void *info, void *payload)
 {
 	__peerlist_timer = NULL;
 
@@ -249,8 +249,11 @@ peerlist_request_broadcast(void)
 
 	message_broadcast(OP_PEERLIST, NULL, 0, 0);
 
-	delay = randombytes_random() % (HOUR_USECONDS / 3);
-	__peerlist_timer = timer_set(delay, __peerlist_request_tick, NULL);
+	if (!__peerlist_timer) {
+		delay = randombytes_random() % (HOUR_USECONDS / 3);
+		__peerlist_timer = event_timer_add(delay, FALSE,
+			__peerlist_request_tick, NULL);
+	}
 }
 
 static void
