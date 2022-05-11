@@ -67,8 +67,9 @@ enum opcodes {
 };
 
 enum message_flags {
-	MESSAGE_FLAG_NONE = 0,
-	MESSAGE_FLAG_PEER = (1 << 0)	// ask to join the remote's peerlist
+	MESSAGE_FLAG_NONE  = 0,
+	MESSAGE_FLAG_REPLY = (1 << 0),	// this message is a reply
+	MESSAGE_FLAG_PEER  = (2 << 0)	// ask to join the remote's peerlist
 };
 
 extern const char *const opcode_names[];

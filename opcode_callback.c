@@ -174,6 +174,7 @@ op_peerlist(event_fd_t *info)
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
+		nev->message_header.flags |= htons(MESSAGE_FLAG_REPLY);
 		op_peerlist_server(info, nev);
 		break;
 	case NETWORK_EVENT_TYPE_CLIENT:
@@ -199,9 +200,6 @@ op_peerlist_server(event_fd_t *info, network_event_t *nev)
 
 	buf = malloc(size);
 	response = (op_peerlist_response_t *)buf;
-#ifdef DEBUG_ALLOC
-	lprintf("+USERDATA %p PEERLIST", response);
-#endif
 
 	response->peers_ipv4_count = htobe32(peerlist.list4_size);
 	response->peers_ipv6_count = htobe32(peerlist.list6_size);
@@ -236,6 +234,11 @@ op_peerlist_client(event_fd_t *info, network_event_t *nev)
 
 	msg = network_message(info);
 
+	if (!nev->userdata) {
+		message_done(info);
+		return;
+	}
+		
 	buf = nev->userdata;
 	response = (op_peerlist_response_t *)buf;
 	response->peers_ipv4_count = be32toh(response->peers_ipv4_count);
@@ -269,6 +272,7 @@ op_blockinfo(event_fd_t *info)
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
+		nev->message_header.flags |= htons(MESSAGE_FLAG_REPLY);
 		op_blockinfo_server(info, nev);
 		break;
 	case NETWORK_EVENT_TYPE_CLIENT:
@@ -300,9 +304,6 @@ op_blockinfo_server(event_fd_t *info, network_event_t *nev)
 	raw_block_hash(block, size, block_hash);
 
 	blockinfo = malloc(sizeof(op_blockinfo_response_t));
-#ifdef DEBUG_ALLOC
-	lprintf("+USERDATA %p BLOCKINFO", blockinfo);
-#endif
 	blockinfo->index = block->index;
 	bcopy(block_hash, blockinfo->hash, sizeof(hash_t));
 	bcopy(block->prev_block_hash, blockinfo->prev_block_hash,
@@ -354,6 +355,11 @@ op_blockinfo_client(event_fd_t *info, network_event_t *nev)
 	big_idx_t lcl_idx, rmt_idx;
 	op_blockinfo_response_t *blockinfo;
 
+	if (!nev->userdata) {
+		message_done(info);
+		return;
+	}
+		
 	if (ignorelist_is_ignored(&network_event(info)->remote_addr))
 		return;
 
@@ -394,6 +400,7 @@ op_getblock(event_fd_t *info)
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
+		nev->message_header.flags |= htons(MESSAGE_FLAG_REPLY);
 		op_getblock_server(info, nev);
 		break;
 	case NETWORK_EVENT_TYPE_CLIENT:
@@ -441,6 +448,11 @@ op_getblock_client(event_fd_t *info, network_event_t *nev)
 	void *block;
 	size_t p;
 
+	if (!nev->userdata) {
+		message_done(info);
+		return;
+	}
+		
 	if (ignorelist_is_ignored(&network_event(info)->remote_addr))
 		return;
 
@@ -539,6 +551,8 @@ op_blockannounce(event_fd_t *info)
 	last = block_idx_last();
 	if (last < index)
 		message_send(info, OP_GETBLOCK, NULL, 0, htobe64(last + 1));
+	else
+		message_done(info);
 }
 
 static void
@@ -549,6 +563,7 @@ op_pact(event_fd_t *info)
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
+		nev->message_header.flags |= htons(MESSAGE_FLAG_REPLY);
 		op_pact_server(info, nev);
 		break;
 	case NETWORK_EVENT_TYPE_CLIENT:
@@ -623,6 +638,7 @@ op_getrxcache(event_fd_t *info)
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
+		nev->message_header.flags |= htons(MESSAGE_FLAG_REPLY);
 		op_getrxcache_server(info, nev);
 		break;
 	case NETWORK_EVENT_TYPE_CLIENT:
@@ -648,9 +664,6 @@ op_getrxcache_server(event_fd_t *info, network_event_t *nev)
 	fseek(f, 0, SEEK_SET);
 	if (!(nev->userdata = malloc(size)))
 		return message_cancel(info);
-#ifdef DEBUG_ALLOC
-	lprintf("+USERDATA %p RXCACHE", nev->userdata);
-#endif
 	if (fread(nev->userdata, 1, size, f) != size) {
 		fclose(f);
 		return message_cancel(info);
@@ -675,6 +688,11 @@ op_getrxcache_client(event_fd_t *info, network_event_t *nev)
 {
 	message_t *msg;
 
+	if (!nev->userdata) {
+		message_done(info);
+		return;
+	}
+		
 	msg = network_message(info);
 	cache_write("rxcache", nev->userdata, be32toh(msg->payload_size));
 
@@ -689,6 +707,7 @@ op_getnotars(event_fd_t *info)
 
 	switch (nev->type) {
 	case NETWORK_EVENT_TYPE_SERVER:
+		nev->message_header.flags |= htons(MESSAGE_FLAG_REPLY);
 		op_getnotars_server(info, nev);
 		break;
 	case NETWORK_EVENT_TYPE_CLIENT:
@@ -714,9 +733,6 @@ op_getnotars_server(event_fd_t *info, network_event_t *nev)
 	fseek(f, 0, SEEK_SET);
 	if (!(nev->userdata = malloc(size)))
 		return message_cancel(info);
-#ifdef DEBUG_ALLOC
-	lprintf("+USERDATA %p NOTARS", nev->userdata);
-#endif
 	if (fread(nev->userdata, 1, size, f) != size) {
 		fclose(f);
 		return message_cancel(info);
@@ -741,6 +757,11 @@ op_getnotars_client(event_fd_t *info, network_event_t *nev)
 {
 	message_t *msg;
 
+	if (!nev->userdata) {
+		message_done(info);
+		return;
+	}
+		
 	msg = network_message(info);
 
 	cache_write("notarscache", nev->userdata, be32toh(msg->payload_size));

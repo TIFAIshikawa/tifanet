@@ -53,6 +53,7 @@ typedef struct __event_callback_info {
 typedef struct __event_fd {
 	event_callback_info_t callback;
 	struct timeval timeout;
+	mseconds_t interval;
 	int fd;
 	event_direction_t direction;
 } event_fd_t;

@@ -79,9 +79,6 @@ event_base_alloc(size_t size, event_callback_t callback, void *payload,
 	event_callback_info_t *res;
 
 	res = calloc(1, size + payload_size);
-#ifdef DEBUG_ALLOC
-	lprintf("+EVENT %p", res);
-#endif
 
 	res->call = callback;
 
@@ -113,8 +110,9 @@ event_fd_add(int fd, event_direction_t direction,
 		if (__pollfds[i].fd == -1) {
 			__pollfds[i].fd = res->fd;
 			__pollfds[i].events = 0;
-			//if (direction & EVENT_READ)
-				__pollfds[i].events |= POLLIN;
+			// always POLLIN: connect() failure is communicated
+			// thusly
+			__pollfds[i].events |= POLLIN;
 			if (direction & EVENT_WRITE)
 				__pollfds[i].events |= POLLOUT;
 			break;
@@ -140,9 +138,11 @@ event_fd_update(event_fd_t *info, event_direction_t direction)
 {
 	for (size_t i = 0; i < __nfds; i++) {
 		if (__pollfds[i].fd == info->fd) {
+			info->direction = direction;
 			__pollfds[i].events = 0;
-			//if (direction & EVENT_READ)
-				__pollfds[i].events |= POLLIN;
+			// always POLLIN: connect() failure is communicated
+			// thusly
+			__pollfds[i].events |= POLLIN;
 			if (direction & EVENT_WRITE)
 				__pollfds[i].events |= POLLOUT;
 			return;
@@ -162,11 +162,10 @@ event_fd_remove(event_fd_t *info)
 		if (__pollfds[i].fd == fde->fd) {
 			__pollfds[i].fd = -1;
 			__pollfds[i].events = 0;
-			break;
+			event_free(info);
+			return;
 		}
 	}
-
-	event_free(info);
 }
 
 void
@@ -174,10 +173,11 @@ event_fd_timeout_set(event_fd_t *event, mseconds_t msec_delay)
 {
 	struct timeval now, tv;
 
+	event->interval = msec_delay;
+
 	gettimeofday(&now, NULL);
-	msec_delay *= 1000;
-	tv.tv_sec = msec_delay / 1000000;
-	tv.tv_usec = msec_delay - (tv.tv_sec * 1000000);
+	tv.tv_sec = msec_delay / 1000;
+	tv.tv_usec = (msec_delay - (tv.tv_sec * 1000)) * 1000;
 	timeradd(&now, &tv, &event->timeout);
 }
 
@@ -202,9 +202,6 @@ event_callback_set(event_fd_t *event, event_callback_t callback)
 static void
 event_free(void *info)
 {
-#ifdef DEBUG_ALLOC
-	lprintf("-EVENT %p", info);
-#endif
 	free(info);
 }
 
@@ -222,8 +219,8 @@ event_timer_add(uint64_t msec_delay, int repeats,
 	res->interval = msec_delay;
 
 	gettimeofday(&now, NULL);
-	tv.tv_sec = 0;
-	tv.tv_usec = msec_delay * 1000;
+	tv.tv_sec = msec_delay / 1000;
+	tv.tv_usec = (msec_delay - (tv.tv_sec * 1000)) * 1000;
 	timeradd(&now, &tv, &res->timeout);
 
 	vlist_item_add(__event_timers, res);
@@ -242,27 +239,25 @@ event_timer_remove(event_timer_t *info)
 static void
 __event_fire_for_fd(char *item, void *payload)
 {
-	size_t *i;
 	event_fd_t *event;
+	struct pollfd *fds;
 
 	event = (event_fd_t *)item;
-	i = (size_t *)payload;
+	fds = (struct pollfd *)payload;
 
-	if (event->fd == __pollfds[*i].fd) {
-char revents[1024];
-revents[0] = 0;
-if (__pollfds[*i].revents & POLLIN) strcat(revents, "POLLIN ");
-if (__pollfds[*i].revents & POLLOUT) strcat(revents, "POLLOUT ");
-if (__pollfds[*i].revents & POLLHUP) strcat(revents, "POLLHUP ");
-if (__pollfds[*i].revents & POLLERR) strcat(revents, "POLLERR ");
-if (__pollfds[*i].revents & POLLNVAL) strcat(revents, "POLLNVAL ");
-lprintf("%d: %s", event->fd, revents);
-		if (__pollfds[*i].revents & POLLHUP)
-			errno = ECONNRESET;
-		else
-			errno = 0;
-		event->callback.call(event, event->callback.payload);
-	}
+	if (event->fd != fds->fd)
+		return;
+
+	if (fds->revents & POLLHUP || fds->revents & POLLERR ||
+	    (fds->revents & POLLIN && event->direction == EVENT_WRITE))
+		errno = ECONNRESET;
+	else
+		errno = 0;
+
+	if (event->interval)
+		event_fd_timeout_set(event, event->interval);
+
+	event->callback.call(event, event->callback.payload);
 }
 
 static void
@@ -274,7 +269,7 @@ __events_check_poll_results(void)
 		if (!__pollfds[i].revents)
 			continue;
 
-		vlist_loop(__event_fds, __event_fire_for_fd, &i);
+		vlist_loop(__event_fds, __event_fire_for_fd, &__pollfds[i]);
 	}
 }
 
@@ -295,8 +290,6 @@ __event_fds_check_timeout(char *item, void *payload)
 
 	// close() will cause read/write errors, so upstream will act
 	// accordingly
-lprintf("TIMEOUT %d %p", event->fd, event);
-	close(event->fd);
 	errno = ETIMEDOUT;
 	event->callback.call(event, event->callback.payload);
 }
@@ -342,7 +335,7 @@ void
 event_loop_start(void)
 {
 	for (;;)
-		__event_loop_poll(1);
+		__event_loop_poll(10);
 }
 
 void

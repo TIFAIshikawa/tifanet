@@ -52,6 +52,7 @@
 
 #include "pact.h"
 #include "block.h"
+#include "block_storage.h"
 
 static void
 save_state(int signal)

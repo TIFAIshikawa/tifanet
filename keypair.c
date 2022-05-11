@@ -54,9 +54,6 @@ keypair_create()
 	keypair_t *res;
 
 	res = malloc(sizeof(keypair_t));
-#ifdef DEBUG_ALLOC
-	lprintf("+KEYPAIR %p", res);
-#endif
 	crypto_sign_keypair(res->pk, res->sk);
 
 	return (res);
@@ -69,9 +66,6 @@ keypair_load(const char *filename)
 	FILE *f;
 
 	res = malloc(sizeof(keypair_t));
-#ifdef DEBUG_ALLOC
-	lprintf("+KEYPAIR %p", res);
-#endif
 
 	if (!(f = fopen(filename, "r")))
 		FAILTEMP("load_keypair: %s: %s\n", filename,
@@ -116,9 +110,6 @@ void
 keypair_free(keypair_t *keypair)
 {
 	free(keypair);
-#ifdef DEBUG_ALLOC
-	lprintf("-KEYPAIR %p", keypair);
-#endif
 }
 
 char *
@@ -180,9 +171,6 @@ void *keypair_verify_start(void *payload, size_t size)
 	crypto_sign_state *res;
 
 	res = malloc(sizeof(crypto_sign_state));
-#ifdef DEBUG_ALLOC
-	lprintf("+KEYPAIR_VERIFY %p", res);
-#endif
 	crypto_sign_init(res);
 	if (size)
 		keypair_verify_update(res, payload, size);
@@ -202,9 +190,6 @@ keypair_verify_finalize(void *context, void *public_key, void *signature)
 	int res;
 
 	res = crypto_sign_final_verify(context, signature, public_key);
-#ifdef DEBUG_ALLOC
-	lprintf("-KEYPAIR_VERIFY %p", context);
-#endif
 	free(context);
 
 	return res == 0;

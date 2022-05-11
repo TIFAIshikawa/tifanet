@@ -251,7 +251,7 @@ blockchain_rewind(big_idx_t to_idx)
 	}
 
 	// fix block storage
-	for (size_t i = __num_block_storages - 1; i >= 0; i--) {
+	for (ssize_t i = __num_block_storages - 1; i >= 0; i--) {
 		if (!(bs = __block_storage[i]))
 			continue;
 		if (bs->first_block_idx > to_idx) {

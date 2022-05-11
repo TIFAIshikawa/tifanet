@@ -120,10 +120,6 @@ block_alloc(void)
 	res->pacts = malloc(sizeof(pact_t *) * 10);
 	res->pacts[0] = NULL; // pact 0 will be added later
 
-#ifdef DEBUG_ALLOC
-	lprintf("+BLOCK %p", res);
-#endif
-
 	return (res);
 }
 
@@ -222,9 +218,6 @@ add_notar_reward(block_t *block)
 		}
 
 		free(caches);
-#ifdef DEBUG_ALLOC
-		lprintf("-RXCACHESFORADDRESS %p", caches);
-#endif
 	}
 
 	pact_rx_add(t, (void *)feeaddress, amount);
@@ -973,9 +966,6 @@ block_free(block_t *block)
 		if (block->pacts[i])
 			pact_free(block->pacts[i]);
 	free(block->pacts);
-#ifdef DEBUG_ALLOC
-	lprintf("-BLOCK %p", block);
-#endif
 	free(block);
 }
 
@@ -1157,6 +1147,10 @@ blockchain_update(void)
 int
 blockchain_is_updating(void)
 {
+	if (__getblocks_target_idx > block_idx_last())
+		if (__getblocks_target_idx - block_idx_last() < 2)
+			return (0);
+
 	return (__getblocks_target_idx != 0);
 }
 

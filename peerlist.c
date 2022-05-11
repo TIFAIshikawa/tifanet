@@ -249,11 +249,10 @@ peerlist_request_broadcast(void)
 
 	message_broadcast(OP_PEERLIST, NULL, 0, 0);
 
-	if (!__peerlist_timer) {
-		delay = randombytes_random() % (HOUR_USECONDS / 3);
-		__peerlist_timer = event_timer_add(delay, FALSE,
-			__peerlist_request_tick, NULL);
-	}
+	delay = randombytes_random() % 20;
+
+	__peerlist_timer = event_timer_add(delay * 60 * 60 * 1000, FALSE,
+		__peerlist_request_tick, NULL);
 }
 
 static void

@@ -155,6 +155,7 @@ peer_set_inactive(event_fd_t *event)
 	network_event_t *nev;
 
 	nev = network_event(event);
+	nev->read_idx = nev->write_idx = 0;
 	vlist_item_remove(__peers.active, event);
 	vlist_item_add(__peers.inactive, event);
 }
@@ -303,14 +304,44 @@ connection_accept(void *info, void *payload)
 				  strerror(errno));
 
 	socket_set_async(fd);
+//lprintf("ACCEPT fd=%d", fd);
 
 	bzero(&nev, sizeof(network_event_t));
 	bcopy(&addr, &nev.remote_addr, len);
 	nev.type = NETWORK_EVENT_TYPE_SERVER;
 	nev.state = NETWORK_EVENT_STATE_HEADER;
-	event = event_fd_add(fd, EVENT_READ,
-		message_read, &nev, sizeof(network_event_t));
+	event = event_fd_add(fd, EVENT_READ, message_read, &nev,
+			     sizeof(network_event_t));
 	event_fd_timeout_set(event, 20000);
+}
+
+static void
+message_userdata_free(event_fd_t *info)
+{
+	network_event_t *nev;
+	message_t *msg;
+
+	nev = network_event(info);
+	msg = network_message(info);
+
+	// TODO do this in a better way
+	if (nev->userdata) {
+		switch (msg->opcode) {
+		case OP_PEERLIST:
+		case OP_BLOCKINFO:
+		case OP_GETRXCACHE:
+		case OP_GETNOTARS:
+			free(nev->userdata);
+			break;
+		case OP_GETBLOCK:
+			if (nev->type == NETWORK_EVENT_TYPE_CLIENT)
+				free(nev->userdata);
+			break;
+		}
+	}
+
+	nev->userdata = NULL;
+	nev->userdata_size = 0;
 }
 
 void
@@ -324,17 +355,19 @@ message_done(event_fd_t *info)
 
 	nev = network_event(info);
 	msg = network_message(info);
+
+	event_fd_update(info, EVENT_READ);
+
+	message_userdata_free(info);
+
 	if (message_flags(msg) & MESSAGE_FLAG_PEER) {
-lprintf("WAITMODE %s %d %p", peername(&network_event(info)->remote_addr), event_fd_get(info), info);
 		event_fd_timeout_set(info, 60000);
-		event_fd_update(info, EVENT_READ);
 		event_callback_set(info, message_read);
 		nev->type = NETWORK_EVENT_TYPE_SERVER;
 		nev->state = NETWORK_EVENT_STATE_HEADER;
-		nev->userdata = NULL; // TODO ERHE FREE!!!!!
-		nev->userdata_size = 0;
 		peer_set_inactive(info);
-		return;
+	} else {
+		message_cancel(info);
 	}
 }
 
@@ -344,7 +377,8 @@ message_cancel(event_fd_t *info)
 	vlist_item_remove(__peers.active, info);
 	vlist_item_remove(__peers.inactive, info);
 
-lprintf("CANCEL %s %d %p", peername(&network_event(info)->remote_addr), event_fd_get(info), info);
+	message_userdata_free(info);
+
 	close(event_fd_get(info));
 	event_fd_remove(info);
 }
@@ -357,7 +391,7 @@ message_header_validate(event_fd_t *info)
 	message_t *msg;
 
 	nev = network_event(info);
-	msg = &nev->message_header;
+	msg = network_message(info);
 
 	if (memcmp(msg->magic, TIFA_IDENT, sizeof(magic_t)) != 0) {
 		lprintf("message_read: invalid magic");
@@ -390,6 +424,38 @@ message_header_validate(event_fd_t *info)
 	return (TRUE);
 }
 
+static ssize_t
+socket_read(event_fd_t *info, char *buf, size_t len)
+{
+	ssize_t res;
+
+	if ((res = read(event_fd_get(info), buf, len)) <= 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			return (0);
+
+		message_cancel(info);
+		return (-1);
+	}
+
+	return (res);
+}
+
+static ssize_t
+socket_write(event_fd_t *info, char *buf, size_t len)
+{
+	ssize_t res;
+
+	if ((res = write(event_fd_get(info), buf, len)) <= 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			return (0);
+
+		message_cancel(info);
+		return (-1);
+	}
+
+	return (res);
+}
+
 void
 message_read(void *_info, void *payload)
 {
@@ -411,19 +477,20 @@ message_read(void *_info, void *payload)
 
 	switch (nev->state) {
 	case NETWORK_EVENT_STATE_HEADER:
-		ptr = (void *)&nev->message_header + nev->read_idx;
+		ptr = (void *)msg + nev->read_idx;
 		want = sizeof(message_t) - nev->read_idx;
-		if ((r = read(event_fd_get(info), ptr, want)) <= 0) {
-			if (errno != EAGAIN && errno != EWOULDBLOCK &&
-				errno != EINTR)
-				message_cancel(info);
+		if ((r = socket_read(info, ptr, want)) <= 0)
 			return;
-		}
 		if (!nev->read_idx)
 			peer_set_active(info);
 
 		nev->read_idx += r;
 		if (nev->read_idx == sizeof(message_t)) {
+			if (message_flags(msg) & MESSAGE_FLAG_REPLY)
+				nev->type = NETWORK_EVENT_TYPE_CLIENT;
+			else
+				nev->type = NETWORK_EVENT_TYPE_SERVER;
+
 			if (!message_header_validate(info))
 				return message_cancel(info);
 
@@ -431,11 +498,9 @@ message_read(void *_info, void *payload)
 				nev->userdata = malloc(be32toh(msg->payload_size));
 			else
 				nev->userdata = NULL;
-#ifdef DEBUG_ALLOC
-			lprintf("+USERDATA %p MESSAGE_READ", nev->userdata);
-#endif
 			if (message_flags(msg) & MESSAGE_FLAG_PEER)
 				peerlist_add(&nev->remote_addr);
+
 			nev->read_idx = 0;
 			nev->state = NETWORK_EVENT_STATE_BODY;
 			message_read(info, payload);
@@ -445,22 +510,13 @@ message_read(void *_info, void *payload)
 		ptr = (void *)nev->userdata + nev->read_idx;
 		want = be32toh(msg->payload_size) - nev->read_idx;
 		if (nev->read_idx != want) {
-			if ((r = read(event_fd_get(info), ptr, want)) <= 0) {
-				if (errno != EAGAIN && errno != EWOULDBLOCK) {
-					message_cancel(info);
-					return;
-				}
-				r = 0;
-			}
+			if ((r = socket_read(info, ptr, want)) <= 0)
+				return;
 			nev->read_idx += r;
 		}
 
-		if (nev->read_idx == be32toh(msg->payload_size)) {
-lprintf("<rcv(ip=%s fd=%d op=%s us=%lld sz=%ld)",
-peername(&nev->remote_addr), event_fd_get(info),
-opcode_names[msg->opcode], be64toh(msg->userinfo), be32toh(msg->payload_size));
+		if (nev->read_idx == be32toh(msg->payload_size))
 			opcode_execute(info);
-		}
 		break;
 	default:
 		FAIL(EX_SOFTWARE, "message_read %p: illegal state: %d\n",
@@ -479,7 +535,7 @@ message_write(void *_info, void *payload)
 
 	info = (event_fd_t *)_info;
 	nev = network_event(info);
-	msg = &nev->message_header;
+	msg = network_message(info);
 
 	if (errno) {
 		peerlist_remove(&nev->remote_addr);
@@ -489,12 +545,10 @@ message_write(void *_info, void *payload)
 
 	switch (nev->state) {
 	case NETWORK_EVENT_STATE_HEADER:
-		ptr = (void *)&nev->message_header + nev->write_idx;
+		ptr = (void *)msg + nev->write_idx;
 		want = sizeof(message_t) - nev->write_idx;
-		if ((r = write(event_fd_get(info), ptr, want)) <= 0) {
-			message_cancel(info);
+		if ((r = socket_write(info, ptr, want)) <= 0)
 			return;
-		}
 		if (!nev->write_idx)
 			peer_set_active(info);
 
@@ -509,24 +563,13 @@ message_write(void *_info, void *payload)
 		ptr = (void *)nev->userdata + nev->write_idx;
 		want = be32toh(msg->payload_size) - nev->write_idx;
 		if (nev->write_idx != want) {
-			if ((r = write(event_fd_get(info), ptr, want)) <= 0) {
-				message_cancel(info);
+			if ((r = socket_write(info, ptr, want)) <= 0)
 				return;
-			}
 			nev->write_idx += r;
 		}
 
-		if (nev->write_idx == be32toh(msg->payload_size)) {
-lprintf("<snd(ip=%s fd=%d op=%s us=%lld sz=%ld)",
-peername(&nev->remote_addr), event_fd_get(info),
-opcode_names[msg->opcode], be64toh(msg->userinfo), be32toh(msg->payload_size));
-			event_fd_update(info, EVENT_READ);
-			if (nev->type == NETWORK_EVENT_TYPE_CLIENT) {
-				nev->state = NETWORK_EVENT_STATE_HEADER;
-				event_callback_set(info, message_read);
-			} else
-				message_done(info);
-		}
+		if (nev->write_idx == be32toh(msg->payload_size))
+			message_done(info);
 		break;
 	default:
 		FAIL(EX_SOFTWARE, "message_write %p: illegal state: %d\n",
@@ -583,11 +626,7 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 
 	res = event_fd_add(fd, EVENT_WRITE, message_write, &nev,
 			sizeof(network_event_t));
-lprintf("CONNECT %s %d %p", peername(&network_event(res)->remote_addr), event_fd_get(res), res);
 	event_fd_timeout_set(res, 2000);
-#ifdef DEBUG_ALLOC
-	lprintf("+USERDATA %p REQUEST_SEND", nev.userdata);
-#endif
 
 	return (res);
 
@@ -632,9 +671,9 @@ message_send(event_fd_t *event, opcode_t opcode, void *payload,
 
 	nev = network_event(event);
 	msg = network_message(event);
-lprintf("REUSING %s %d %p", peername(&nev->remote_addr), event_fd_get(event), event);
 
 	message_init(msg, opcode, size, info);
+	nev->read_idx = nev->write_idx = 0;
 	nev->type = NETWORK_EVENT_TYPE_CLIENT;
 	nev->state = NETWORK_EVENT_STATE_HEADER;
 	nev->userdata = payload;
@@ -807,8 +846,7 @@ is_nonroutable_address(struct sockaddr_storage *addr)
 	// These checks are all quite rudimentary. The point is to ignore
 	// e.g. obvious RFC1918 and RFC5771 addresses, since peers need to
 	// be able to all connect to each other. If some cases slip through,
-	// such as subnet broadcast addresses, so be it; those will be deleted
-	// anyway when connection attempts fail.
+	// so be it, those will be deleted anyway when connection attempts fail.
 	switch (addr->ss_family) {
 	case AF_INET:
 		a4 = (struct sockaddr_in *)addr;
@@ -853,7 +891,7 @@ __sockaddr_list_fill(struct sockaddr_storage *list, size_t size)
 	size_t res;
 
 	bzero(list, sizeof(struct sockaddr_storage) * size);
-	
+
 	res = MIN(size, peerlist.list4_size + peerlist.list6_size);
 	if (res <= size) {
 		for (i = 0; i < peerlist.list4_size; i++) {

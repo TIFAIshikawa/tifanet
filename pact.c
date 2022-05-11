@@ -53,9 +53,6 @@ pact_alloc(void)
 	pact_t *res;
 
 	res = malloc(sizeof(pact_t));
-#ifdef DEBUG_ALLOC
-	lprintf("+PACT %p", res);
-#endif
 
 	res->time = time(NULL);
 	res->flags = PACT_TYPE_RTX | PACT_VERSION_1;
@@ -168,9 +165,6 @@ raw_pact_alloc(pact_t *t, size_t *size)
 		sizeof(pact_tx_t) * be32toh(t->num_tx) +
 		sizeof(pact_rx_t) * be32toh(t->num_rx);
 	res = malloc(*size);
-#ifdef DEBUG_ALLOC
-	lprintf("+RAWPACT %p", res);
-#endif
 
 	return (res);
 }
@@ -178,9 +172,6 @@ raw_pact_alloc(pact_t *t, size_t *size)
 void
 raw_pact_free(raw_pact_t *raw_pact)
 {
-#ifdef DEBUG_ALLOC
-	lprintf("-RAWPACT %p", raw_pact);
-#endif
 	free(raw_pact);
 }
 
@@ -216,9 +207,6 @@ pact_free(pact_t *pact)
 		free(pact->rx[i]);
 	free(pact->tx);
 	free(pact->rx);
-#ifdef DEBUG_ALLOC
-	lprintf("-PACT %p", pact);
-#endif
 	free(pact);
 }
 
@@ -308,9 +296,6 @@ pact_pending_remove(raw_pact_t *t)
 		}
 
 		if (remove) {
-#ifdef DEBUG_ALLOC
-			lprintf("-RAWPACT %p", pt);
-#endif
 			__pending_pacts[i] = NULL;
 			free(pt);
 		}
