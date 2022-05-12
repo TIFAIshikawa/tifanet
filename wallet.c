@@ -179,7 +179,7 @@ wallet_load(const char *name)
 	char tmp[MAXPATHLEN + 1];
 
 	if (!wallet_exists(name))
-		return NULL;
+		return (NULL);
 
 	for (size_t i = 0; __wallets[i]; i++)
 		if (strcmp(name, wallet_name(__wallets[i])) == 0)

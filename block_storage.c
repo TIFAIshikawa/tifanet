@@ -250,7 +250,11 @@ blockchain_rewind(big_idx_t to_idx)
 		rxcache_raw_block_rewind(block);
 	}
 
+	rxcache_save(htobe64(to_idx));
+	notarscache_save(htobe64(to_idx));
+
 	// fix block storage
+	to_idx++;
 	for (ssize_t i = __num_block_storages - 1; i >= 0; i--) {
 		if (!(bs = __block_storage[i]))
 			continue;

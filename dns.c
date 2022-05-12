@@ -52,6 +52,7 @@
 #include "error.h"
 #include "block.h"
 #include "config.h"
+#include "block_storage.h"
 
 #ifndef __OpenBSD__
 static int __dns_txt_request(char *request, char *response, size_t size);

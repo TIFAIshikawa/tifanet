@@ -44,8 +44,8 @@
  *
  * 0.9: [etaunknown] Pact type III (Solidity compatible smart contracts) ?
  * 0.8: [etaunknown] Pact type II (blind pacts)
- *      [2021-12-01] Go live ???
- * 0.7: [2021-06-15] Nicify code, use DNS
+ *      [2022-05-28] Go live ???
+ * 0.7: [2021-06-15] Nicify code, use DNS, persistent TCP connections
  * 0.6: [2021-05-23] Denounce notar, e.g. upon block timeout
  * 0.5: [2021-05-04] Robustify network: fault tolerance, e.g. fix possible
  *      infinite loops
