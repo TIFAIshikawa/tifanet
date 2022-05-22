@@ -272,36 +272,6 @@ notar_denounce_emergency_node(void)
 	return (notar_block0());
 }
 
-void *
-notar_denounce_node(big_idx_t node_idx)
-{
-	raw_block_t *rb;
-	big_idx_t idx, i;
-	void *not_node, *deno_node;
-
-	if (node_idx > 1)
-		FAIL(EX_SOFTWARE, "notar_denounce_node: illegal node_idx: %ju",
-			node_idx);
-
-	if ((idx = block_idx_last()) < 2)
-		return (notar_denounce_emergency_node());
-
-	rb = block_load(idx, NULL);
-	not_node = deno_node = rb->notar;
-
-	for (i = 0; idx > 0; idx--) {
-		rb = block_load(idx, NULL);
-		if (!pubkey_equals(rb->notar, not_node) &&
-			!pubkey_equals(rb->notar, deno_node)) {
-			if (i == node_idx)
-				return (rb->notar);
-			not_node = rb->notar;
-		}
-	}
-
-	return (notar_denounce_emergency_node());
-}
-
 void
 notarscache_save(big_idx_t block_idx)
 {

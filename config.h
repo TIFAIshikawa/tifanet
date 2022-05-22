@@ -34,10 +34,6 @@
 #include <sys/param.h>
 #include <netinet/in.h>
 
-//#define DEBUG_NETWORK 1
-//#define DEBUG_PEERLIST 1
-//#define DEBUG_NOTAR 1
-//#define DEBUG_CHAINCHECK 1
 /*
  * Roadmap
  * ver: [eta date] description
@@ -89,6 +85,11 @@
 #define HOUR_USECONDS 3600000
 #define HOUR_SECONDS 3600
 #define DAY_SECONDS 86400
+
+//#define DEBUG_NETWORK 1
+//#define DEBUG_PEERLIST 1
+//#define DEBUG_NOTAR 1
+//#define DEBUG_CHAINCHECK 1
 
 extern char *__network;
 

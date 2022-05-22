@@ -198,12 +198,18 @@ keypair_verify_finalize(void *context, void *public_key, void *signature)
 int
 pubkey_compare(const public_key_t l, const public_key_t r)
 {
+	if (!l || !r)
+		return (0);
+
 	return (memcmp(l, r, sizeof(public_key_t)));
 }
 
 int
 pubkey_equals(const public_key_t l, const public_key_t r)
 {
+	if (!l || !r)
+		return (0);
+
 	return (pubkey_compare(l, r) == 0);
 }
 

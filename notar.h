@@ -54,7 +54,6 @@ extern int notar_should_generate_block(void);
 extern void notar_elect_next(void);
 
 extern void *notar_denounce_emergency_node(void);
-extern void *notar_denounce_node(big_idx_t idx);
 
 extern void notarscache_hash(hash_t result_hash, big_idx_t block_idx);
 extern void notarscache_load(void);

@@ -92,8 +92,7 @@ extern big_idx_t block_idx_last(void);
 extern raw_block_t *raw_block_last(size_t *size);
 
 extern raw_block_t *block_load(big_idx_t idx, size_t *size);
-extern raw_block_t *blocks_load(big_idx_t idx, size_t *size,
-	big_idx_t max_blocks, size_t max_size);
+extern raw_block_timeout_t *denouncement_block_load(big_idx_t idx);
 
 extern void block_last_load(void);
 

@@ -416,11 +416,16 @@ op_getblock_server(event_fd_t *info, network_event_t *nev)
 {
 	raw_block_t *block;
 	message_t *msg;
+	big_idx_t idx;
 	size_t size;
 
 	msg = network_message(info);
-	if (!(block = blocks_load(be64toh(msg->userinfo), &size,
-		GETBLOCKS_MAX_BLOCKS, MAXPACKETSIZE))) {
+	idx = be64toh(msg->userinfo);
+
+	if ((block = (raw_block_t *)denouncement_block_load(msg->userinfo)))
+		size = sizeof(raw_block_timeout_t);
+	else if (!(block = blocks_load(idx, &size, GETBLOCKS_MAX_BLOCKS,
+		MAXPACKETSIZE))) {
 		message_cancel(info);
 		return;
 	}

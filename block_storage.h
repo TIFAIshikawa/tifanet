@@ -30,6 +30,7 @@
 #ifndef __TIFA_BLOCK_STORAGE_H
 #define __TIFA_BLOCK_STORAGE_H
 
+#include "config.h"
 #include "block.h"
 
 extern void blockchain_storage_load(void);
