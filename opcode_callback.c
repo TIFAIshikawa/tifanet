@@ -66,6 +66,9 @@ typedef struct  __attribute__((__packed__)) __op_blockinfo_response {
 	signature_t signature;
 } op_blockinfo_response_t;
 
+static userinfo_t __getrxcache_userinfo;
+static userinfo_t __getnotarscache_userinfo;
+
 static void op_peerlist(event_fd_t *info);
 static void op_blockinfo(event_fd_t *info);
 static void op_getblock(event_fd_t *info);
@@ -102,6 +105,32 @@ opcode_callback_t opcode_callbacks[OP_MAXOPCODE] = {
 	op_getrxcache,		// OP_GETRXCACHE
 	op_getnotars,		// OP_GETNOTARS
 };
+
+static inline void
+__userinfo_random_fill(userinfo_t *userinfo)
+{
+	uint32_t *info;
+
+	info = (uint32_t *)userinfo;
+	info[0] = randombytes_random();
+	info[1] = randombytes_random();
+}
+
+userinfo_t
+getrxcache_userinfo(void)
+{
+	__userinfo_random_fill(&__getrxcache_userinfo);
+
+	return (__getrxcache_userinfo);
+}
+
+userinfo_t
+getnotarscache_userinfo(void)
+{
+	__userinfo_random_fill(&__getnotarscache_userinfo);
+
+	return (__getnotarscache_userinfo);
+}
 
 int
 opcode_valid(message_t *msg)
@@ -360,8 +389,10 @@ op_blockinfo_client(event_fd_t *info, network_event_t *nev)
 		return;
 	}
 		
-	if (ignorelist_is_ignored(&network_event(info)->remote_addr))
+	if (ignorelist_is_ignored(&network_event(info)->remote_addr)) {
+		message_cancel(info);
 		return;
+	}
 
 	lcl_idx = block_idx_last();
 
@@ -458,8 +489,10 @@ op_getblock_client(event_fd_t *info, network_event_t *nev)
 		return;
 	}
 		
-	if (ignorelist_is_ignored(&network_event(info)->remote_addr))
+	if (ignorelist_is_ignored(&network_event(info)->remote_addr)) {
+		message_cancel(info);
 		return;
+	}
 
 	msg = network_message(info);
 
@@ -534,6 +567,11 @@ op_notarannounce(event_fd_t *info)
 	network_event_t *nev;
 	public_key_t new_notar;
 
+	if (ignorelist_is_ignored(&network_event(info)->remote_addr)) {
+		message_cancel(info);
+		return;
+	}
+
 	nev = event_payload_get(info);
 	bcopy(nev->userdata, new_notar, sizeof(public_key_t));
 	notar_pending_add(new_notar);
@@ -547,8 +585,10 @@ op_blockannounce(event_fd_t *info)
 	big_idx_t index, last;
 	message_t *msg;
 
-	if (ignorelist_is_ignored(&network_event(info)->remote_addr))
+	if (ignorelist_is_ignored(&network_event(info)->remote_addr)) {
+		message_cancel(info);
 		return;
+	}
 
 	msg = network_message(info);
 	index = be64toh(msg->userinfo);
@@ -589,6 +629,11 @@ op_pact_server(event_fd_t *info, network_event_t *nev)
 	message_t *msg;
 	small_idx_t sz;
 	userinfo_t err;
+
+	if (ignorelist_is_ignored(&network_event(info)->remote_addr)) {
+		message_cancel(info);
+		return;
+	}
 
 	msg = network_message(info);
 
@@ -693,12 +738,22 @@ op_getrxcache_client(event_fd_t *info, network_event_t *nev)
 {
 	message_t *msg;
 
+	if (ignorelist_is_ignored(&network_event(info)->remote_addr)) {
+		message_cancel(info);
+		return;
+	}
+
 	if (!nev->userdata) {
 		message_done(info);
 		return;
 	}
-		
+
 	msg = network_message(info);
+
+	if (memcmp(&msg->userinfo, &__getrxcache_userinfo,
+		   sizeof(userinfo_t)) != 0)
+		return;
+
 	cache_write("rxcache", nev->userdata, be32toh(msg->payload_size));
 
 	message_done(info);
@@ -766,8 +821,17 @@ op_getnotars_client(event_fd_t *info, network_event_t *nev)
 		message_done(info);
 		return;
 	}
-		
+
+	if (ignorelist_is_ignored(&network_event(info)->remote_addr)) {
+		message_cancel(info);
+		return;
+	}
+
 	msg = network_message(info);
+
+	if (memcmp(&msg->userinfo, &__getnotarscache_userinfo,
+		   sizeof(userinfo_t)) != 0)
+		return;
 
 	cache_write("notarscache", nev->userdata, be32toh(msg->payload_size));
 

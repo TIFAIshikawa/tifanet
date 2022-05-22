@@ -96,6 +96,10 @@ network_init(void)
 {
 	__peers.active = vlist_init(10);
 	__peers.inactive = vlist_init(10);
+
+	// init userinfo challenges so userinfo = 0 can't be exploited
+	getrxcache_userinfo();
+	getnotarscache_userinfo();
 }
 
 static int

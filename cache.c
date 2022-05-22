@@ -38,6 +38,7 @@
 #include "config.h"
 #include "keypair.h"
 #include "rxcache.h"
+#include "opcode_callback.h"
 
 #define CACHE_HASH_AMOUNT 2
 
@@ -124,10 +125,10 @@ caches_only_download_callback(void *info, void *payload)
 void
 cache_download(void)
 {
-	message_send_random_with_callback(OP_GETRXCACHE, NULL, 0, 0,
-		caches_only_download_callback);
-	message_send_random_with_callback(OP_GETNOTARS, NULL, 0, 0,
-		caches_only_download_callback);
+	message_send_random_with_callback(OP_GETRXCACHE, NULL, 0,
+		getrxcache_userinfo(), caches_only_download_callback);
+	message_send_random_with_callback(OP_GETNOTARS, NULL, 0,
+		getnotarscache_userinfo(), caches_only_download_callback);
 }
 
 int
