@@ -41,6 +41,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include "opcode_callback.h"
 #include "peerlist.h"
 #include "network.h"
 #include "endian.h"
@@ -247,7 +248,7 @@ peerlist_request_broadcast(void)
 
 	peerlist_bootstrap();
 
-	message_broadcast(OP_PEERLIST, NULL, 0, 0);
+	message_broadcast(OP_PEERLIST, NULL, 0, getpeerlist_userinfo());
 
 	delay = randombytes_random() % 20;
 

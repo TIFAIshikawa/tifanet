@@ -39,5 +39,6 @@ extern void opcode_execute(event_fd_t *info);
 
 extern userinfo_t getrxcache_userinfo(void);
 extern userinfo_t getnotarscache_userinfo(void);
+extern userinfo_t getpeerlist_userinfo(void);
 
 #endif /* __TIFA_OPCODE_CALLBACK_H */

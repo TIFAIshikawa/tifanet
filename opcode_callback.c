@@ -68,6 +68,7 @@ typedef struct  __attribute__((__packed__)) __op_blockinfo_response {
 
 static userinfo_t __getrxcache_userinfo;
 static userinfo_t __getnotarscache_userinfo;
+static userinfo_t __getpeerlist_userinfo;
 
 static void op_peerlist(event_fd_t *info);
 static void op_blockinfo(event_fd_t *info);
@@ -106,6 +107,12 @@ opcode_callback_t opcode_callbacks[OP_MAXOPCODE] = {
 	op_getnotars,		// OP_GETNOTARS
 };
 
+static int
+__userinfo_equals(message_t *msg, userinfo_t userinfo)
+{
+	return (memcmp(&msg->userinfo, &userinfo, sizeof(userinfo_t)) == 0);
+}
+
 static inline void
 __userinfo_random_fill(userinfo_t *userinfo)
 {
@@ -130,6 +137,14 @@ getnotarscache_userinfo(void)
 	__userinfo_random_fill(&__getnotarscache_userinfo);
 
 	return (__getnotarscache_userinfo);
+}
+
+userinfo_t
+getpeerlist_userinfo(void)
+{
+	__userinfo_random_fill(&__getpeerlist_userinfo);
+
+	return (__getpeerlist_userinfo);
 }
 
 int
@@ -267,7 +282,10 @@ op_peerlist_client(event_fd_t *info, network_event_t *nev)
 		message_done(info);
 		return;
 	}
-		
+
+	if (!__userinfo_equals(msg, __getpeerlist_userinfo))
+		return;
+
 	buf = nev->userdata;
 	response = (op_peerlist_response_t *)buf;
 	response->peers_ipv4_count = be32toh(response->peers_ipv4_count);
@@ -750,8 +768,7 @@ op_getrxcache_client(event_fd_t *info, network_event_t *nev)
 
 	msg = network_message(info);
 
-	if (memcmp(&msg->userinfo, &__getrxcache_userinfo,
-		   sizeof(userinfo_t)) != 0)
+	if (!__userinfo_equals(msg, __getrxcache_userinfo))
 		return;
 
 	cache_write("rxcache", nev->userdata, be32toh(msg->payload_size));
@@ -829,8 +846,7 @@ op_getnotars_client(event_fd_t *info, network_event_t *nev)
 
 	msg = network_message(info);
 
-	if (memcmp(&msg->userinfo, &__getnotarscache_userinfo,
-		   sizeof(userinfo_t)) != 0)
+	if (!__userinfo_equals(msg, __getnotarscache_userinfo))
 		return;
 
 	cache_write("notarscache", nev->userdata, be32toh(msg->payload_size));
