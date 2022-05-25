@@ -35,6 +35,7 @@
 #include "log.h"
 #include "notar.h"
 #include "cache.h"
+#include "notar.h"
 #include "config.h"
 #include "keypair.h"
 #include "rxcache.h"
@@ -42,7 +43,9 @@
 
 #define CACHE_HASH_AMOUNT 2
 
-static int __caches_only_downloaded = 0;
+static void caches_only_download_callback(void *info, void *payload);
+static void __getrxcache_callback(void *info, void *payload);
+static void __getnotarscache_callback(void *info, void *payload);
 
 void
 cache_hash(hash_t resulthash, big_idx_t block_idx)
@@ -71,10 +74,11 @@ cache_write(char *filename, char *buffer, size_t size)
 	for (w = wr = 0; wr < size && w >= 0; wr += w)
 		w = fwrite(buffer + wr, 1, size - wr, f);
 
+	fclose(f);
+
 	if (wr != size)
 		FAILTEMP("failed writing rxcache: %s", strerror(errno));
 
-	fclose(f);
 
 	return (TRUE);
 }
@@ -101,19 +105,39 @@ caches_get_blocks(void *info, void *payload)
 }
 
 static void
+__getnotarscache_callback(void *info, void *payload)
+{
+	if (!notarscache_exists())
+		message_send_random_with_callback(OP_GETNOTARS, NULL, 0,
+			getnotarscache_userinfo(), __getnotarscache_callback);
+	else
+		message_send_random_with_callback(OP_GETRXCACHE, NULL, 0,
+			getrxcache_userinfo(), __getrxcache_callback);
+}
+
+static void
+__getrxcache_callback(void *info, void *payload)
+{
+	if (!rxcache_exists())
+		message_send_random_with_callback(OP_GETRXCACHE, NULL, 0,
+			getrxcache_userinfo(), __getrxcache_callback);
+	else
+		caches_only_download_callback(info, payload);
+}
+
+static void
 caches_only_download_callback(void *info, void *payload)
 {
 	big_idx_t index;
-	__caches_only_downloaded++;
-
-	if (__caches_only_downloaded < 2)
-		return;
 
 	notarscache_load();
 	rxcache_load();
-	if (notars_last_block_idx() != rxcache_last_block_idx())
-		FAILTEMP("notarscache idx %ju != rxcache idx %ju",
+	if (notars_last_block_idx() != rxcache_last_block_idx()) {
+		lprintf("notarscache idx %ju != rxcache idx %ju",
 			notars_last_block_idx(), rxcache_last_block_idx());
+		cache_download();
+		return;
+	}
 
 	index = notars_last_block_idx();
 	lprintf("asking for block %ju", index);
@@ -125,21 +149,19 @@ caches_only_download_callback(void *info, void *payload)
 void
 cache_download(void)
 {
-	message_send_random_with_callback(OP_GETRXCACHE, NULL, 0,
-		getrxcache_userinfo(), caches_only_download_callback);
+	cache_remove();
+
 	message_send_random_with_callback(OP_GETNOTARS, NULL, 0,
-		getnotarscache_userinfo(), caches_only_download_callback);
+		getnotarscache_userinfo(), __getnotarscache_callback);
 }
 
 int
 cache_remove(void)
 {
-	int r[4];
+	int r[2];
 
 	r[0] = config_unlink("blocks/rxcache.bin");
 	r[1] = config_unlink("blocks/notarscache.bin");
-	r[2] = config_unlink("peerlist4.txt");
-	r[3] = config_unlink("peerlist6.txt");
 
-	return (r[0] && r[1] && r[2] && r[3]);
+	return (r[0] && r[1]);
 }

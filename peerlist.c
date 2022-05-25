@@ -675,3 +675,15 @@ ignorelist_reset(void)
 {
 	ignorelist_init();
 }
+
+int
+peerlistcache_remove(void)
+{
+	int r[2];
+
+	r[0] = config_unlink("peerlist4.txt");
+	r[1] = config_unlink("peerlist6.txt");
+
+	return (r[0] && r[1]);
+}
+

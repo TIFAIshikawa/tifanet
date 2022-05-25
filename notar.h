@@ -58,5 +58,6 @@ extern void *notar_denounce_emergency_node(void);
 extern void notarscache_hash(hash_t result_hash, big_idx_t block_idx);
 extern void notarscache_load(void);
 extern void notarscache_save(big_idx_t idx);
+extern int notarscache_exists(void);
 
 #endif /* __TIFA_NOTAR_H */

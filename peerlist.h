@@ -63,6 +63,8 @@ extern void ignorelist_reset(void);
 
 extern void peerlist_request_broadcast(void);
 
+extern int peerlistcache_remove(void);
+
 extern int peerlist_address_random(struct sockaddr_storage *addr);
 
 #endif /* __TIFA_PEERLIST_H */

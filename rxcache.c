@@ -405,6 +405,12 @@ rxcache_reset(void)
 	rxcache_load();
 }
 
+int
+rxcache_exists(void)
+{
+	return (access(config_path("blocks/rxcache.bin"), R_OK) == 0);
+}
+
 amount_t
 public_key_balance(public_key_t address)
 {

@@ -123,6 +123,27 @@ __userinfo_random_fill(userinfo_t *userinfo)
 	info[1] = randombytes_random();
 }
 
+static void
+__opcode_request_reply(event_fd_t *info, void *payload, size_t size)
+{
+	network_event_t *nev;
+	message_t *msg;
+
+	nev = network_event(info);
+	msg = network_message(info);
+
+	nev->state = NETWORK_EVENT_STATE_HEADER;
+	nev->read_idx = 0;
+	nev->write_idx = 0;
+	nev->userdata = payload;
+	nev->userdata_size = size;
+	msg->payload_size = htobe32(size);
+
+	event_fd_update(info, EVENT_WRITE);
+	event_callback_set(info, message_write);
+	message_write(info, event_payload_get(info));
+}
+
 userinfo_t
 getrxcache_userinfo(void)
 {
@@ -233,7 +254,6 @@ static void
 op_peerlist_server(event_fd_t *info, network_event_t *nev)
 {
 	size_t size;
-	message_t *msg;
 	uint8_t *buf, *ptr;
 	size_t ipv4_size, ipv6_size;
 	op_peerlist_response_t *response;
@@ -253,18 +273,7 @@ op_peerlist_server(event_fd_t *info, network_event_t *nev)
 	ptr += ipv4_size;
 	bcopy(peerlist.list6, ptr, ipv6_size);
 
-	nev = network_event(info);
-	nev->state = NETWORK_EVENT_STATE_HEADER;
-	nev->read_idx = 0;
-	nev->write_idx = 0;
-	nev->userdata = response;
-	nev->userdata_size = size;
-	msg = network_message(info);
-	msg->payload_size = htobe32(size);
-
-	event_fd_update(info, EVENT_WRITE);
-	event_callback_set(info, message_write);
-	message_write(info, event_payload_get(info));
+	__opcode_request_reply(info, response, size);
 }
 
 static void
@@ -297,6 +306,10 @@ op_peerlist_client(event_fd_t *info, network_event_t *nev)
 
 	if (buf - (uint8_t *)nev->userdata != be32toh(msg->payload_size))
 		return (message_cancel(info));
+
+	lprintf("received peerlist from %s: %d IPv4 and %d IPv6 peers",
+		peername(&nev->remote_addr), response->peers_ipv4_count,
+		response->peers_ipv6_count);
 
 	for (small_idx_t i = 0; i < response->peers_ipv4_count; i++)
 		peerlist_add_ipv4(addr4_list[i]);
@@ -354,18 +367,8 @@ op_blockinfo_server(event_fd_t *info, network_event_t *nev)
 	bcopy(block->prev_block_hash, blockinfo->prev_block_hash,
 		sizeof(hash_t));
 
-	nev = event_payload_get(info);
-	nev->state = NETWORK_EVENT_STATE_HEADER;
-	nev->read_idx = 0;
-	nev->write_idx = 0;
-	nev->userdata = blockinfo;
-	nev->userdata_size = sizeof(op_blockinfo_response_t);
-
-	msg->payload_size = htobe32(sizeof(op_blockinfo_response_t));
-
-	event_fd_update(info, EVENT_WRITE);
-	event_callback_set(info, message_write);
-	message_write(info, event_payload_get(info));
+	__opcode_request_reply(info, blockinfo,
+			       sizeof(op_blockinfo_response_t));
 }
 
 static int
@@ -473,16 +476,7 @@ op_getblock_server(event_fd_t *info, network_event_t *nev)
 		return;
 	}
 
-	nev->state = NETWORK_EVENT_STATE_HEADER;
-	nev->read_idx = 0;
-	nev->write_idx = 0;
-	nev->userdata = block;
-	nev->userdata_size = sizeof(size);
-	msg->payload_size = htobe32(size);
-
-	event_fd_update(info, EVENT_WRITE);
-	event_callback_set(info, message_write);
-	message_write(info, event_payload_get(info));
+	__opcode_request_reply(info, block, size);
 }
 
 static void
@@ -582,6 +576,9 @@ op_notarannounce(event_fd_t *info)
 	bcopy(nev->userdata, new_notar, sizeof(public_key_t));
 	notar_pending_add(new_notar);
 
+	lprintf("received request from %s to become notar: %s",
+		peername(&nev->remote_addr), public_key_node_name(new_notar));
+
 	message_done(info);
 }
 
@@ -660,16 +657,8 @@ op_pact_server(event_fd_t *info, network_event_t *nev)
 	if (err == NO_ERR)
 		nev->userdata = NULL;
 
-	nev->state = NETWORK_EVENT_STATE_HEADER;
-	nev->read_idx = 0;
-	nev->write_idx = 0;
-	nev->userdata_size = 0;
-	msg->payload_size = 0;
 	msg->userinfo = htobe64(err);
-
-	event_fd_update(info, EVENT_WRITE);
-	event_callback_set(info, message_write);
-	message_write(info, event_payload_get(info));
+	__opcode_request_reply(info, NULL, 0);
 
 	pacts_pending(&sz);
 	if (notar_should_generate_block())
@@ -704,8 +693,8 @@ op_getrxcache(event_fd_t *info)
 static void
 op_getrxcache_server(event_fd_t *info, network_event_t *nev)
 {
-	message_t *msg;
 	size_t size;
+	char *data;
 	FILE *f;
 
 	if (!(f = config_fopen("blocks/rxcache.bin", "r")))
@@ -714,25 +703,15 @@ op_getrxcache_server(event_fd_t *info, network_event_t *nev)
 	fseek(f, 0, SEEK_END);
 	size = ftell(f);
 	fseek(f, 0, SEEK_SET);
-	if (!(nev->userdata = malloc(size)))
+	if (!(data = malloc(size)))
 		return (message_cancel(info));
-	if (fread(nev->userdata, 1, size, f) != size) {
+	if (fread(data, 1, size, f) != size) {
 		fclose(f);
 		return (message_cancel(info));
 	}
 	fclose(f);
 
-	msg = network_message(info);
-
-	nev->state = NETWORK_EVENT_STATE_HEADER;
-	nev->read_idx = 0;
-	nev->write_idx = 0;
-	nev->userdata_size = size;
-	msg->payload_size = htobe32(nev->userdata_size);
-
-	event_fd_update(info, EVENT_WRITE);
-	event_callback_set(info, message_write);
-	message_write(info, event_payload_get(info));
+	__opcode_request_reply(info, data, size);
 }
 
 static void
@@ -753,7 +732,7 @@ op_getrxcache_client(event_fd_t *info, network_event_t *nev)
 
 	cache_write("rxcache", nev->userdata, be32toh(msg->payload_size));
 
-	message_done(info);
+	message_cancel(info); // we don't need this connection anymore
 }
 
 static void
@@ -778,8 +757,8 @@ op_getnotars(event_fd_t *info)
 static void
 op_getnotars_server(event_fd_t *info, network_event_t *nev)
 {
-	message_t *msg;
 	size_t size;
+	char *data;
 	FILE *f;
 
 	if (!(f = config_fopen("blocks/notarscache.bin", "r")))
@@ -788,25 +767,15 @@ op_getnotars_server(event_fd_t *info, network_event_t *nev)
 	fseek(f, 0, SEEK_END);
 	size = ftell(f);
 	fseek(f, 0, SEEK_SET);
-	if (!(nev->userdata = malloc(size)))
+	if (!(data = malloc(size)))
 		return (message_cancel(info));
-	if (fread(nev->userdata, 1, size, f) != size) {
+	if (fread(data, 1, size, f) != size) {
 		fclose(f);
 		return (message_cancel(info));
 	}
 	fclose(f);
 
-	msg = network_message(info);
-
-	nev->state = NETWORK_EVENT_STATE_HEADER;
-	nev->read_idx = 0;
-	nev->write_idx = 0;
-	nev->userdata_size = size;
-	msg->payload_size = htobe32(nev->userdata_size);
-
-	event_fd_update(info, EVENT_WRITE);
-	event_callback_set(info, message_write);
-	message_write(info, event_payload_get(info));
+	__opcode_request_reply(info, data, size);
 }
 
 static void
@@ -814,11 +783,11 @@ op_getnotars_client(event_fd_t *info, network_event_t *nev)
 {
 	message_t *msg;
 
-	if (!nev->userdata)
-		return (message_done(info));
-
 	if (ignorelist_is_ignored(&network_event(info)->remote_addr))
 		return (message_cancel(info));
+
+	if (!nev->userdata)
+		return (message_done(info));
 
 	msg = network_message(info);
 
@@ -827,5 +796,5 @@ op_getnotars_client(event_fd_t *info, network_event_t *nev)
 
 	cache_write("notarscache", nev->userdata, be32toh(msg->payload_size));
 
-	message_done(info);
+	message_cancel(info); // we don't need this connection anymore
 }

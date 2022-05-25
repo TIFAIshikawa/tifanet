@@ -621,7 +621,7 @@ opt_notars(int argc, char *argv[])
 static int
 opt_reset(int argc, char *argv[])
 {
-	int r[3] = { 0, 0, 0 };
+	int r[4] = { 0, 0, 0, 0 };
 
 	if (argc != 0)
 		return (FALSE);
@@ -636,8 +636,10 @@ opt_reset(int argc, char *argv[])
 	r[0] = blocks_remove();
 	r[1] = log_remove();
 	r[2] = cache_remove();
+	r[3] = peerlistcache_remove();
 
-	printf("---\nresult: %s\n", r[0] && r[1] && r[2] ? "true" : "false");
+	printf("---\nresult: %s\n", r[0] && r[1] && r[2] && r[3] ?
+	       "true" : "false");
 
 	return (TRUE);
 }

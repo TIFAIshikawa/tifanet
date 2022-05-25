@@ -482,3 +482,9 @@ notarscache_hash(hash_t result_hash, big_idx_t block_idx)
                                   sizeof(public_key_t) * __notars_count);
         crypto_generichash_final(&crx, result_hash, sizeof(hash_t));
 }
+
+int
+notarscache_exists(void)
+{
+	return (access(config_path("blocks/notarscache.bin"), R_OK) == 0);
+}

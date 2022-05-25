@@ -146,9 +146,6 @@ socket_set_async(int fd)
 static void
 peer_set_active(event_fd_t *event)
 {
-	network_event_t *nev;
-
-	nev = network_event(event);
 	vlist_item_add(__peers.active, event);
 	vlist_item_remove(__peers.inactive, event);
 }
@@ -308,7 +305,6 @@ connection_accept(void *info, void *payload)
 				  strerror(errno));
 
 	socket_set_async(fd);
-//lprintf("ACCEPT fd=%d", fd);
 
 	bzero(&nev, sizeof(network_event_t));
 	bcopy(&addr, &nev.remote_addr, len);
@@ -352,6 +348,7 @@ void
 message_done(event_fd_t *info)
 {
 	network_event_t *nev;
+	mseconds_t timeout;
 	message_t *msg;
 
 	if (errno)
@@ -362,22 +359,36 @@ message_done(event_fd_t *info)
 
 	event_fd_update(info, EVENT_READ);
 
+	if (nev->on_close && message_flags(msg) & MESSAGE_FLAG_REPLY) {
+		nev->on_close(info, nev->userdata);
+		nev->on_close = NULL;
+	}
+
 	message_userdata_free(info);
 
-	if (message_flags(msg) & MESSAGE_FLAG_PEER) {
-		event_fd_timeout_set(info, 60000);
-		event_callback_set(info, message_read);
-		nev->type = NETWORK_EVENT_TYPE_SERVER;
-		nev->state = NETWORK_EVENT_STATE_HEADER;
-		peer_set_inactive(info);
-	} else {
-		message_cancel(info);
-	}
+	timeout = (message_flags(msg) & MESSAGE_FLAG_PEER) ? 60000 : 2000;
+
+	event_fd_timeout_set(info, timeout);
+	event_callback_set(info, message_read);
+	nev->type = NETWORK_EVENT_TYPE_SERVER;
+	nev->state = NETWORK_EVENT_STATE_HEADER;
+	peer_set_inactive(info);
 }
 
 void
 message_cancel(event_fd_t *info)
 {
+	network_event_t *nev;
+	message_t *msg;
+
+	nev = network_event(info);
+	msg = network_message(info);
+
+	if (nev->on_close && message_flags(msg) & MESSAGE_FLAG_REPLY) {
+		nev->on_close(info, nev->userdata);
+		nev->on_close = NULL;
+	}
+
 	vlist_item_remove(__peers.active, info);
 	vlist_item_remove(__peers.inactive, info);
 
@@ -418,11 +429,10 @@ message_header_validate(event_fd_t *info)
 		}
 	}
 #ifdef DEBUG_NETWORK
-	if (nev->type == NETWORK_EVENT_TYPE_SERVER)
-		lprintf("recv(ip=%s fd=%d op=%s us=%lld sz=%ld)",
-			peername(&nev->remote_addr), event_fd_get(info),
-			opcode_names[msg->opcode], be64toh(msg->userinfo),
-			size);
+	lprintf("recv(ip=%s fd=%d op=%s us=%llu sz=%ld)",
+		peername(&nev->remote_addr), event_fd_get(info),
+		opcode_names[msg->opcode], be64toh(msg->userinfo),
+		size);
 #endif
 
 	return (TRUE);
@@ -718,7 +728,7 @@ __message_send(struct sockaddr_storage *addr, opcode_t opcode, void *payload,
 
 	if (res) {
 #ifdef DEBUG_NETWORK
-		lprintf("send(ip=%s fd=%d op=%s us=%lld sz=%ld)",
+		lprintf("send(ip=%s fd=%d op=%s us=%llu sz=%ld)",
 			peername(addr), event_fd_get(res),
 			opcode_names[opcode], be64toh(info), size);
 #endif
