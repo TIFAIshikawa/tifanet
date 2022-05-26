@@ -674,14 +674,6 @@ main(int argc, char *argv[])
 	argc -= 2;
 	argv += 2;
 
-/*
-size_t sz;
-notarscache_load();
-rxcache_load();
-block_generate_next();
-raw_block_t *rb = raw_block_last(&sz);
-exit(1);
-*/
 	if (strcmp(opt, "-h") == 0 || strcmp(opt, "help") == 0)
 		return usage(TRUE);
 

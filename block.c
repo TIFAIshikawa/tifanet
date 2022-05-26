@@ -281,19 +281,9 @@ block_generate_next()
 	raw_block_t *rb;
 
 	block = block_create();
-/*
-bcopy(block->notar, block->new_notar, sizeof(public_key_t));
-block->flags |= BLOCK_FLAG_NEW_NOTAR;
-block->index = 0;
-*/
+
 	rb = block_finalize(block, &size);
-/*
-FILE *f = fopen("block0.bin", "w+");
-fwrite(rb, 1, size, f);
-fclose(f);
-raw_block_print(rb);
-exit(1);
-*/
+
 	block_free(block);
 
 	lprintf("generated block %ju, size %ld", block_idx(rb), size);
