@@ -738,6 +738,8 @@ main(int argc, char *argv[])
 	}
 	if (strcmp(opt, "reset") == 0)
 		return opt_reset(argc, argv);
+	if (strcmp(opt, "getblockinfo") == 0)
+		return opt_getblockinfo(argc, argv);
 
 	if (!lockfile_is_locked())
 		system("tifanetd -f -s -c");
@@ -767,8 +769,6 @@ main(int argc, char *argv[])
 		return opt_blockhash(argc, argv);
 	if (strcmp(opt, "send") == 0)
 		return opt_send(argc, argv);
-	if (strcmp(opt, "getblockinfo") == 0)
-		return opt_getblockinfo(argc, argv);
 
 	return (usage(FALSE));
 }
