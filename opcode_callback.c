@@ -58,14 +58,6 @@ typedef struct  __attribute__((__packed__)) __op_peerlist_response {
 	small_idx_t peers_ipv6_count;
 } op_peerlist_response_t;
 
-typedef struct  __attribute__((__packed__)) __op_blockinfo_response {
-	big_idx_t index;
-	hash_t hash;
-	hash_t prev_block_hash;
-	public_key_t notar;
-	signature_t signature;
-} op_blockinfo_response_t;
-
 static userinfo_t __getrxcache_userinfo;
 static userinfo_t __getnotarscache_userinfo;
 static userinfo_t __getpeerlist_userinfo;

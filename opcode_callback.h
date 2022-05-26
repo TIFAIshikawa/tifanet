@@ -33,6 +33,14 @@
 #include "event.h"
 #include "network.h"
 
+typedef struct  __attribute__((__packed__)) __op_blockinfo_response {
+	big_idx_t index;
+	hash_t hash;
+	hash_t prev_block_hash;
+	public_key_t notar;
+	signature_t signature;
+} op_blockinfo_response_t;
+
 extern int opcode_valid(message_t *msg);
 extern int opcode_payload_size_valid(message_t *msg, int direction);
 extern void opcode_execute(event_fd_t *info);
