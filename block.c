@@ -445,6 +445,7 @@ raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize)
 	raw_block_timeout_t *rb;
 	time_t ct, bt, lbt;
 	raw_block_t *rbl;
+	void *notars[2];
 	big_idx_t idx;
 	size_t size;
 	void *prev;
@@ -467,7 +468,8 @@ raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize)
 	}
 	if (lbt == bt && raw_block->index == rbl->index)
 		return (FALSE);
-	if (lbt + BLOCK_DENOUNCE_DELAY_SECONDS != bt) {
+	if (lbt + BLOCK_DENOUNCE_DELAY_SECONDS != bt &&
+	    lbt + BLOCK_DENOUNCE_EMERGENCY_DELAY_SECONDS != bt) {
 		lprintf("denounce timeout block with index %ju has invalid "
 			"time: %ld vs %ld", block_idx(raw_block), bt,
 			lbt + BLOCK_DENOUNCE_DELAY_SECONDS);
@@ -491,16 +493,25 @@ raw_block_timeout_validate(raw_block_t *raw_block, size_t blocksize)
 
 	size = offsetof(raw_block_timeout_t, notar);
 	idx = be64toh(__raw_block_timeout_tmp.index) - 1;
-	for (big_idx_t i = 0; i < 2; i++) {
-		for (prev = NULL; !prev; idx--) {
-			ntr = block_load(idx, NULL)->notar;
-			if (!pubkey_equals(ntr, rb->denounced_notar))
-				prev = ntr;
+	if (lbt + BLOCK_DENOUNCE_DELAY_SECONDS == bt) {
+		for (big_idx_t i = 0; i < 2; i++) {
+			for (prev = NULL; !prev; idx--) {
+				ntr = block_load(idx, NULL)->notar;
+				if (!pubkey_equals(ntr, rb->denounced_notar))
+					prev = ntr;
+			}
+			notars[i] = prev;
 		}
+	} else {
+		notars[0] = notars[1] = notar_denounce_emergency_node();
+	}
+
+	for (big_idx_t i = 0; i < 2; i++) {
+		prev =  notars[i];
 		if (!pubkey_equals(rb->notar[i], prev)) {
 			lprintf("denounce timeout block with index %ju "
-				"has invalid notar %d", i,
-				block_idx(raw_block));
+				"has invalid notar %d", block_idx(raw_block),
+				i);
 			return (FALSE);
 		}
 		if (!signature_is_zero(rb->signature[i])) {
@@ -1179,9 +1190,11 @@ blockchain_update(void)
 int
 blockchain_is_updating(void)
 {
+/*
 	if (__getblocks_target_idx > block_idx_last())
 		if (__getblocks_target_idx - block_idx_last() < 2)
 			return (0);
+*/
 
 	return (__getblocks_target_idx != 0);
 }
@@ -1286,7 +1299,8 @@ __block_poll_tick(void *info, void *payload)
 			pubkey_equals(node_public_key(),
 				notar_denounce_emergency_node())) {
 			block_denounce_emergency_timeout_create();
-		} else if (t >= last + BLOCK_DENOUNCE_DELAY_SECONDS) {
+		} else if (t >= last + BLOCK_DENOUNCE_DELAY_SECONDS &&
+			   config_is_notar_node() && node_is_notar()) {
 			lprintf("no blocks seen in the last %d seconds, "
 				"notar will be denounced...",
 				BLOCK_DENOUNCE_DELAY_SECONDS);

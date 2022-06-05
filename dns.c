@@ -102,6 +102,7 @@ __dns_txt_request(char *request, char *response, size_t size)
 void
 blockchain_dns_verify(void)
 {
+	return;
 #if !defined(__OpenBSD__) && !defined(__NetBSD__)
 	hash_t bh;
 	size_t sz, bs;

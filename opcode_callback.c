@@ -475,10 +475,10 @@ static void
 op_getblock_client(event_fd_t *info, network_event_t *nev)
 {
 	size_t size, bufsize, csz;
-	hash_t bh, ch;
 	raw_block_t *check;
+	big_idx_t idx = 0;
 	message_t *msg;
-	big_idx_t idx;
+	hash_t bh, ch;
 	void *block;
 	size_t p;
 
@@ -541,6 +541,9 @@ op_getblock_client(event_fd_t *info, network_event_t *nev)
 
 	if (p > 100)
 		blockchain_dns_verify();
+
+	if (idx)
+		raw_block_broadcast(idx);
 
 	message_done(info);
 
