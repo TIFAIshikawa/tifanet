@@ -373,6 +373,8 @@ message_done(event_fd_t *info)
 	nev->type = NETWORK_EVENT_TYPE_SERVER;
 	nev->state = NETWORK_EVENT_STATE_HEADER;
 	peer_set_inactive(info);
+
+	message_cancel(info);
 }
 
 void
