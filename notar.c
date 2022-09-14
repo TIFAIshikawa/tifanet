@@ -154,6 +154,7 @@ static void
 notar_add(public_key_t new_notar)
 {
 	big_idx_t ia = 0;
+	size_t sz;
 	int cr;
 
 	if (pubkey_equals(node_public_key(), new_notar))
@@ -182,9 +183,10 @@ notar_add(public_key_t new_notar)
 		__notars_size += 100;
 	}
 
-	for (big_idx_t i = ia; i <= __notars_count; i++)
-		bcopy(__notars[i], __notars[i + 1], sizeof(public_key_t));
-	bcopy(new_notar, __notars[ia], sizeof(public_key_t));
+	sz = sizeof(public_key_t);
+	bcopy(__notars + ia, __notars + ia + 1, sz * __notars_count - ia);
+
+	bcopy(new_notar, __notars + ia, sz);
 	__notars_count++;
 }
 

@@ -49,7 +49,7 @@
 #include "event.h"
 #include "log.h"
 
-#define PEERLIST_SAVE_DELAY_USECONDS 1000
+#define PEERLIST_SAVE_DELAY_USECONDS (60 * 10 * 1000)
 
 typedef struct {
 	time64_t time;
@@ -178,11 +178,14 @@ __peerlist_save_tick(void *info, void *payload)
 void
 peerlist_save(void)
 {
+	uint64_t delay;
+
 	if (__peerlist_save_timer)
 		return;
 
-	__peerlist_save_timer = event_timer_add(PEERLIST_SAVE_DELAY_USECONDS,
-		FALSE, __peerlist_save_tick, NULL);
+	delay = randombytes_random() % PEERLIST_SAVE_DELAY_USECONDS;
+	__peerlist_save_timer = event_timer_add(delay, FALSE,
+		__peerlist_save_tick, NULL);
 }
 
 void
@@ -228,6 +231,8 @@ peerlist_save_sync(void)
 	} else {
 		lprintf("peerlist6: save to %s: %s", file, strerror(errno));
 	}
+
+	peerlist_save();
 }
 
 static void

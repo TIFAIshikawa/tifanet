@@ -403,7 +403,7 @@ blocks_remove(void)
 void
 block_load_initial(raw_block_t *block, size_t size)
 {
-	if (__raw_block_last)
+	if (block_idx_last())
 		FAIL(EX_SOFTWARE, "block_load_initial: already loaded %ju",
 			block_idx_last());
 

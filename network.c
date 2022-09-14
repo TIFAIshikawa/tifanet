@@ -357,6 +357,9 @@ message_done(event_fd_t *info)
 	nev = network_event(info);
 	msg = network_message(info);
 
+	if (message_flags(msg) & MESSAGE_FLAG_REPLY)
+		return message_cancel(info);
+
 	event_fd_update(info, EVENT_READ);
 
 	if (nev->on_close && message_flags(msg) & MESSAGE_FLAG_REPLY) {
@@ -373,8 +376,6 @@ message_done(event_fd_t *info)
 	nev->type = NETWORK_EVENT_TYPE_SERVER;
 	nev->state = NETWORK_EVENT_STATE_HEADER;
 	peer_set_inactive(info);
-
-	message_cancel(info);
 }
 
 void
@@ -966,4 +967,6 @@ daemon_start(void)
 	listen_socket_open();
 	notar_announce();
 	block_poll_start();
+
+	peerlist_save(); // bootstrap peerlist timer
 }
