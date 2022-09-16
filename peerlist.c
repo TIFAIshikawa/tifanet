@@ -257,7 +257,7 @@ peerlist_request_broadcast(void)
 
 	delay = randombytes_random() % 20;
 
-	__peerlist_timer = event_timer_add(delay * 60 * 60 * 1000, FALSE,
+	__peerlist_timer = event_timer_add(delay * 60 * 1000, FALSE,
 		__peerlist_request_tick, NULL);
 }
 
