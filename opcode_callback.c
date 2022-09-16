@@ -569,10 +569,10 @@ op_notarannounce(event_fd_t *info)
 
 	nev = event_payload_get(info);
 	bcopy(nev->userdata, new_notar, sizeof(public_key_t));
-	notar_pending_add(new_notar);
-
 	lprintf("received request from %s to become notar: %s",
 		peername(&nev->remote_addr), public_key_node_name(new_notar));
+
+	notar_pending_add(new_notar);
 
 	message_done(info);
 }

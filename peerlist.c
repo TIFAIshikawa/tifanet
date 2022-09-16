@@ -419,7 +419,7 @@ peerlist_remove(struct sockaddr_storage *addr)
 		break;
 	}
 
-	if (peerlist.list4_size + peerlist.list6_size < 4)
+	if (peerlist.list4_size < 2)
 		peerlist_bootstrap();
 }
 

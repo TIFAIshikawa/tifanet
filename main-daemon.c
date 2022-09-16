@@ -84,6 +84,7 @@ usage(char *cmd, int deliberate)
 	fprintf(f, "	-s	synchronize the blockchain and quit when "
 		"done\n");
 	fprintf(f, "	-c	synchronize only caches\n");
+	fprintf(f, "	-6	disable IPv6 connectivity\n");
 	fprintf(f, "	-h 	show this help text\n");
 	fprintf(f, "\n");
 
@@ -96,7 +97,7 @@ main(int argc, char *argv[])
 	int should_fork = 1;
 	int ch, fd;
 
-	while ((ch = getopt(argc, argv, "fhnsSc")) != -1) {
+	while ((ch = getopt(argc, argv, "fhns6c")) != -1) {
 		switch (ch) {
 		case 'f':
 			should_fork = 0;
@@ -109,6 +110,9 @@ main(int argc, char *argv[])
 			break;
 		case 'c':
 			config_set_caches_only(TRUE);
+			break;
+		case '6':
+			ipv6_set_enabled(FALSE);
 			break;
 		case 'h':
 			return usage(argv[0], TRUE);

@@ -139,6 +139,9 @@ extern void message_write(void *, void *payload);
 
 extern void daemon_start(void);
 
+extern int ipv6_enabled(void);
+extern void ipv6_set_enabled(int enabled);
+
 static inline int
 message_flags(message_t *msg)
 {
