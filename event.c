@@ -239,6 +239,8 @@ event_timer_remove(event_timer_t *info)
 static void
 __event_fire_for_fd(char *item, void *payload)
 {
+	int err;
+	socklen_t s;
 	event_fd_t *event;
 	struct pollfd *fds;
 
@@ -248,10 +250,18 @@ __event_fire_for_fd(char *item, void *payload)
 	if (event->fd != fds->fd)
 		return;
 
-	if (fds->revents & POLLHUP || fds->revents & POLLERR ||
-	    (fds->revents & POLLIN && event->direction == EVENT_WRITE))
-		errno = ECONNRESET;
-	else
+	if (fds->revents & POLLHUP || fds->revents & POLLERR) {
+		s = sizeof(int);
+		if (getsockopt(fds->fd, SOL_SOCKET, SO_ERROR, &err, &s) == 0) {
+			errno = err;
+		} else {
+			if (fds->revents & POLLIN &&
+				event->direction == EVENT_WRITE)
+				errno = EHOSTDOWN;
+			else
+				errno = ECONNRESET;
+		}
+	} else
 		errno = 0;
 
 	if (event->interval)

@@ -200,7 +200,7 @@ peername_r(struct sockaddr_storage *addr, char *dst)
 int
 network_is_ipv6_capable(void)
 {
-	return (__listen_info_ipv6 != NULL);
+	return (__listen_info_ipv6 && __ipv6_enabled);
 }
 
 static int
@@ -317,6 +317,10 @@ connection_accept(void *info, void *payload)
 	event = event_fd_add(fd, EVENT_READ, message_read, &nev,
 			     sizeof(network_event_t));
 	event_fd_timeout_set(event, 20000);
+
+	if (addr.ss_family == AF_INET6)
+		ipv6_set_enabled(TRUE);
+
 }
 
 static void
@@ -387,6 +391,12 @@ message_cancel(event_fd_t *info)
 
 	nev = network_event(info);
 	msg = network_message(info);
+
+	if (errno == ENETUNREACH && nev->remote_addr.ss_family == AF_INET6)
+		ipv6_set_enabled(FALSE);
+
+	if (errno == ETIMEDOUT || errno == ECONNREFUSED || errno == EHOSTDOWN)
+		peerlist_remove(&nev->remote_addr);
 
 	if (nev->on_close && message_flags(msg) & MESSAGE_FLAG_REPLY) {
 		nev->on_close(info, nev->userdata);
@@ -487,10 +497,8 @@ message_read(void *_info, void *payload)
 	nev = network_event(info);
 	msg = network_message(info);
 
-	if (errno) {
-		message_cancel(info);
-		return;
-	}
+	if (errno)
+		return message_cancel(info);
 
 	switch (nev->state) {
 	case NETWORK_EVENT_STATE_HEADER:
@@ -554,10 +562,8 @@ message_write(void *_info, void *payload)
 	nev = network_event(info);
 	msg = network_message(info);
 
-	if (errno) {
-		message_cancel(info);
-		return;
-	}
+	if (errno)
+		return message_cancel(info);
 
 	switch (nev->state) {
 	case NETWORK_EVENT_STATE_HEADER:
@@ -626,6 +632,8 @@ request_send(struct sockaddr_storage *addr, message_t *message, void *payload)
 		if (errno != EINPROGRESS && errno != EWOULDBLOCK) {
 			lprintf("request_send: connect %s: %s",
 				peername(addr), strerror(errno));
+			if (errno == ENETUNREACH && addr->ss_family == AF_INET6)
+				ipv6_set_enabled(FALSE);
 			close(fd);
 			peerlist_remove(addr);
 			return (NULL);
