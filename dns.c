@@ -132,6 +132,12 @@ blockchain_dns_verify(void)
 	*hashstr = '\0';
 	hashstr++;
 
+	if (strlen(hashstr) != 64) {
+		lprintf("blockchain_dns_verify: invalid hash while "
+			"retrieving %s: %s %s", dnsreq, txtres, hashstr);
+		return;
+	}
+
 	for (size_t i = 0; txtres[i]; i++) {
 		if (txtres[i] < '0' || txtres[i] > '9') {
 			lprintf("blockchain_dns_verify: block index not a "
