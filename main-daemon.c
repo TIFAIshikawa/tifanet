@@ -140,8 +140,6 @@ main(int argc, char *argv[])
 	if (should_fork)
 		log_open();
 
-	peerlist_load();
-
 	if (!lockfile_create() || lockfile_is_locked()) {
 		lprintf("lockfile already locked. Exiting.");
 		exit(EX_TEMPFAIL);
@@ -198,6 +196,9 @@ main(int argc, char *argv[])
 	}
 
 	event_handler_init();
+
+	peerlist_load();
+
 	network_init();
 
 	blockchain_dns_verify();
