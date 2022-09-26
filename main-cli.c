@@ -578,9 +578,10 @@ opt_send(int argc, char *argv[])
 			"blocks.\n", delay);
 	}
 
+	event_handler_init();
+
 	peerlist_load();
 
-	event_handler_init();
 	network_init();
 
 	send_count = message_broadcast_with_callback(OP_PACT,

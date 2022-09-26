@@ -47,25 +47,32 @@
 #include "endian.h"
 #include "config.h"
 #include "event.h"
+#include "vlist.h"
 #include "log.h"
 
-#define PEERLIST_SAVE_DELAY_USECONDS (60 * 10 * 1000)
+#define PEERLIST_SAVE_DELAY_USECONDS (5 * 1000)
+#define PEERLIST_REMOVE_DELAY_USECONDS (5 * 60 * 1000)
 
 typedef struct {
 	time64_t time;
 	struct in_addr addr;
-} ban_ipv4_t;
+} time_ipv4_t;
 
 typedef struct {
 	time64_t time;
 	struct in6_addr addr;
-} ban_ipv6_t;
+} time_ipv6_t;
+
+typedef struct {
+	time64_t time;
+	struct sockaddr_storage addr;
+} time_ipstorage_t;
 
 typedef struct {
 	size_t list4_size;
 	size_t list6_size;
-	ban_ipv4_t *list4;
-	ban_ipv6_t *list6;
+	time_ipv4_t *list4;
+	time_ipv6_t *list6;
 } ignorelist_t;
 
 peerlist_t peerlist = {
@@ -86,6 +93,13 @@ static const char *__bootstrap_server = "bootstrap.%s.tifa.network";
 
 static event_timer_t *__peerlist_timer = NULL;
 static event_timer_t *__peerlist_save_timer = NULL;
+static event_timer_t *__peerlist_remove_timer = NULL;
+
+static vlist_t *__peers_pending_remove = NULL;
+
+void peers_pending_remove_init(void);
+void __peerlist_remove(struct sockaddr_storage *addr);
+time_ipstorage_t *peers_pending_remove_item(struct sockaddr_storage *addr);
 
 static void peerlist_bootstrap(void);
 static void ignorelist_init(void);
@@ -112,6 +126,35 @@ __peerlist_load_entry_sanitize(char *tmp)
 			len--;
 		}
 	}
+}
+
+static void
+__peerlist_remove_tick(void *info, void *payload)
+{
+	time_ipstorage_t *rip;
+	time_t now;
+	size_t n;
+
+	n = vlist_size(__peers_pending_remove);
+	now = time(NULL);
+	for (size_t i = 0; i < n; i++) {
+		rip = vlist_item_get(__peers_pending_remove, i);
+		__peerlist_remove(&rip->addr);
+		free(rip);
+	}
+
+	vlist_item_remove_all(__peers_pending_remove);
+
+	__peerlist_remove_timer = event_timer_add(PEERLIST_REMOVE_DELAY_USECONDS,
+		FALSE, __peerlist_remove_tick, NULL);
+}
+
+void
+peers_pending_remove_init(void)
+{
+	__peers_pending_remove = vlist_init(10);
+	__peerlist_remove_timer = event_timer_add(PEERLIST_REMOVE_DELAY_USECONDS,
+		FALSE, __peerlist_remove_tick, NULL);
 }
 
 void
@@ -164,6 +207,8 @@ peerlist_load(void)
 	}
 
 	ignorelist_init();
+
+	peers_pending_remove_init();
 
 	peerlist_bootstrap();
 }
@@ -255,7 +300,7 @@ peerlist_request_broadcast(void)
 
 	message_broadcast(OP_PEERLIST, NULL, 0, getpeerlist_userinfo());
 
-	delay = randombytes_random() % 20;
+	delay = randombytes_random() % 30;
 
 	__peerlist_timer = event_timer_add(delay * 60 * 1000, FALSE,
 		__peerlist_request_tick, NULL);
@@ -287,8 +332,14 @@ peerlist_bootstrap(void)
 void
 peerlist_add(struct sockaddr_storage *addr)
 {
+	time_ipstorage_t *rip;
 	struct sockaddr_in *a4;
 	struct sockaddr_in6 *a6;
+
+	if ((rip = peers_pending_remove_item(addr))) {
+		vlist_item_remove(__peers_pending_remove, rip);
+		free(rip);
+	}
 
 	switch (addr->ss_family) {
 	case AF_INET:
@@ -361,7 +412,7 @@ peerlist_add_ipv6(struct in6_addr addr)
 	inet_ntop(AF_INET6, &addr, tmp, INET6_ADDRSTRLEN);
 #endif
 
-	if (ignorelist_is_ignored_ipv6(addr))
+	if (ignorelist_is_ignored_ipv6(addr) || !ipv6_enabled())
 		return;
 
 	bzero(&a6, sizeof(struct sockaddr_in6));
@@ -398,8 +449,39 @@ peerlist_add_ipv6(struct in6_addr addr)
 #endif
 }
 
+time_ipstorage_t *
+peers_pending_remove_item(struct sockaddr_storage *addr)
+{
+	time_ipstorage_t *rip;
+	size_t n, s;
+
+	n = vlist_size(__peers_pending_remove);
+	s = sizeof(struct sockaddr_storage);
+	for (size_t i = 0; i < n; i++) {
+		rip = vlist_item_get(__peers_pending_remove, i);
+		if (memcmp(&rip->addr, addr, s) == 0 && rip->time)
+			return (rip);
+	}
+
+	return (NULL);
+}
+
 void
 peerlist_remove(struct sockaddr_storage *addr)
+{
+	time_ipstorage_t *rip;
+
+	if (peers_pending_remove_item(addr))
+		return;
+
+	rip = calloc(1, sizeof(time_ipstorage_t));
+	rip->time = time(NULL);
+	bcopy(addr, &rip->addr, sizeof(struct sockaddr_storage));
+	vlist_item_add(__peers_pending_remove, rip);
+}
+
+void
+__peerlist_remove(struct sockaddr_storage *addr)
 {
 	struct sockaddr_in *a4;
 	struct sockaddr_in6 *a6;
@@ -616,7 +698,7 @@ ignorelist_is_ignored_ipv4(struct in_addr addr)
 
 	for (size_t i = 0; i < ignorelist.list4_size; i++) {
 		if (ignorelist.list4[i].time < expired) {
-			sz = sizeof(ban_ipv4_t) * (ignorelist.list4_size - i - 1);
+			sz = sizeof(time_ipv4_t) * (ignorelist.list4_size - i - 1);
 			bcopy(ignorelist.list4 + 1, ignorelist.list4, sz);
 			ignorelist.list4_size--;
 			i--;
@@ -641,7 +723,7 @@ ignorelist_is_ignored_ipv6(struct in6_addr addr)
 
 	for (size_t i = 0; i < ignorelist.list6_size; i++) {
 		if (ignorelist.list6[i].time < expired) {
-			sz = sizeof(ban_ipv6_t) * (ignorelist.list6_size - i - 1);
+			sz = sizeof(time_ipv6_t) * (ignorelist.list6_size - i - 1);
 			bcopy(ignorelist.list6 + 1, ignorelist.list6, sz);
 			ignorelist.list6_size--;
 			i--;
