@@ -276,8 +276,6 @@ peerlist_save_sync(void)
 	} else {
 		lprintf("peerlist6: save to %s: %s", file, strerror(errno));
 	}
-
-	peerlist_save();
 }
 
 static void
